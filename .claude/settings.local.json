@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:platform.openai.com)",
+      "WebFetch(domain:)",
+      "Bash(uv venv:*)",
+      "Bash(source:*)",
+      "Bash(uv pip install:*)",
+      "Bash(playwright install:*)",
+      "Bash(playwright install-deps:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(docker compose build:*)",
+      "Bash(docker compose:*)",
+      "Bash(python -c:*)"
+    ]
+  }
+}
