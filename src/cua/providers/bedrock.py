@@ -162,7 +162,22 @@ class BedrockProvider(ComputerUseProvider):
         Returns:
             Bedrock Converse API response
         """
-        # Build message content with hybrid guide
+        # Build message content with hybrid guide and autonomous agent instructions
+        autonomous_instructions = """
+
+**AUTONOMOUS AGENT MODE:**
+You are an AUTONOMOUS agent. Do NOT ask the user questions or wait for input. Take actions, observe results via screenshots, and continue until the task is complete. After EVERY action, take a screenshot to see the result, then decide your next action.
+
+If you need to see the current state, use the screenshot action - never ask the user.
+
+**CRITICAL - Tool Usage:**
+When using the computer tool with click actions, you MUST provide coordinates:
+- ✅ CORRECT: {"action": "left_click", "coordinate": [640, 480]}
+- ❌ WRONG: {"action": "click"} (missing coordinate!)
+- ❌ WRONG: {"action": "left_click"} (missing coordinate!)
+
+Look at the screenshot to find the visual position of the element you want to click, then provide its [x, y] pixel coordinates."""
+
         hybrid_guide = ""
         if accessibility_tree and not accessibility_tree.get("error"):
             hybrid_guide = """
@@ -193,7 +208,7 @@ HYBRID MODE: You have access to BOTH screenshot and accessibility tree.
 """
 
         # Build message content for Converse API format
-        content = [{"text": prompt + hybrid_guide}]
+        content = [{"text": prompt + autonomous_instructions + hybrid_guide}]
 
         # Add accessibility tree if available
         if accessibility_tree and not accessibility_tree.get("error"):

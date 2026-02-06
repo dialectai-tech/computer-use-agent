@@ -42,7 +42,20 @@ class ClaudeProvider(ComputerUseProvider):
         Returns:
             Claude API response
         """
-        # Build initial message content with hybrid approach guide
+        # Build initial message content with autonomous agent instructions
+        autonomous_instructions = """
+
+**AUTONOMOUS AGENT MODE:**
+You are an AUTONOMOUS agent. Do NOT ask the user for input or wait for them to "show you" anything. You can take screenshots yourself to see the current state. After EVERY action, take a screenshot to observe the result, then continue with your next action. Keep working until the task is FULLY complete.
+
+**CRITICAL - Tool Usage:**
+When using click actions, you MUST provide coordinates from the screenshot:
+- ✅ CORRECT: {"action": "left_click", "coordinate": [640, 480]}
+- ❌ WRONG: {"action": "left_click"} (missing coordinate!)
+
+Look at the screenshot to find where the element is, then provide [x, y] pixel coordinates."""
+
+        # Build hybrid approach guide
         hybrid_guide = ""
         if accessibility_tree and not accessibility_tree.get("error"):
             hybrid_guide = """
@@ -73,7 +86,7 @@ HYBRID MODE: You have access to BOTH screenshot and accessibility tree.
 - Click at the coordinates where "Dismiss" button appears in screenshot
 """
 
-        content = [{"type": "text", "text": prompt + hybrid_guide}]
+        content = [{"type": "text", "text": prompt + autonomous_instructions + hybrid_guide}]
 
         # Add accessibility tree if available
         if accessibility_tree and not accessibility_tree.get("error"):

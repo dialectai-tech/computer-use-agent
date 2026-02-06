@@ -41,6 +41,16 @@ class OpenAIProvider(ComputerUseProvider):
         Returns:
             OpenAI API response
         """
+        # Build autonomous agent instructions
+        autonomous_instructions = """
+
+**AUTONOMOUS AGENT MODE:**
+You are an AUTONOMOUS agent. Take actions, observe results via screenshots, and continue until complete. Do NOT ask the user for input. After each action, take a screenshot to see the result.
+
+**CRITICAL - Tool Usage:**
+Click actions MUST include coordinates: {"action": "click", "x": 640, "y": 480}
+Look at screenshot to find element position."""
+
         # Build hybrid guide if accessibility tree is available
         hybrid_guide = ""
         if accessibility_tree and not accessibility_tree.get("error"):
@@ -61,7 +71,7 @@ HYBRID MODE: You have BOTH screenshot and accessibility tree.
 """
 
         # Build initial input content
-        content = [{"type": "input_text", "text": prompt + hybrid_guide}]
+        content = [{"type": "input_text", "text": prompt + autonomous_instructions + hybrid_guide}]
 
         # Add accessibility tree if available
         if accessibility_tree and not accessibility_tree.get("error"):
