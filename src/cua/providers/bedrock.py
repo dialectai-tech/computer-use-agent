@@ -190,19 +190,25 @@ class BedrockProvider(ComputerUseProvider):
             }
         ]
 
+        # Determine beta version based on tool version
+        # computer_20241022 -> computer-use-2024-10-22
+        # computer_20250124 -> computer-use-2025-01-24
+        beta_version = "computer-use-2025-01-24" if "20250124" in self.tool_version else "computer-use-2024-10-22"
+
         # Tools go in additionalModelRequestFields for Converse API
         additional_fields = {
-            "anthropic_beta": ["computer-use-2024-10-22"],
+            "anthropic_beta": [beta_version],
             "tools": tools_config
         }
 
         # Call Bedrock Converse API
+        # For initial request, tools are ONLY in additionalModelRequestFields
+        # toolConfig is not needed for initial request
         start_time = time.time()
         response = self.client.converse(
             modelId=self.model_id,
             messages=self.messages,
             inferenceConfig={"maxTokens": 4096},
-            toolConfig={"tools": tools_config},  # Tool configuration
             additionalModelRequestFields=additional_fields
         )
         api_time = time.time() - start_time
@@ -300,20 +306,45 @@ class BedrockProvider(ComputerUseProvider):
             }
         ]
 
-        # Additional fields for Claude-specific parameters
-        additional_fields = {
-            "anthropic_beta": ["computer-use-2024-10-22"],
-            "tools": tools_config
+        # Determine beta version based on tool version
+        beta_version = "computer-use-2025-01-24" if "20250124" in self.tool_version else "computer-use-2024-10-22"
+
+        # For continuation: tools go in toolConfig wrapped as toolSpec
+        # additionalModelRequestFields only contains beta header (no tools to avoid duplication)
+        additional_fields_continuation = {
+            "anthropic_beta": [beta_version]
         }
 
-        # Call Converse API with toolConfig (required for continuation)
+        # Build toolConfig for continuation (required when using tool results)
+        # Wrap each tool as a toolSpec with minimal valid input schema
+        bedrock_tool_config = {
+            "tools": [
+                {
+                    "toolSpec": {
+                        "name": tool["name"],
+                        "inputSchema": {
+                            "json": {
+                                "type": "object",
+                                "properties": {}
+                            }
+                        }
+                    }
+                }
+                for tool in tools_config
+            ]
+        }
+
+        # Call Converse API with continuation
+        # NOTE: Tools are defined in BOTH places but this appears to be required:
+        # - toolConfig: References tools by name (Bedrock requirement for tool results)
+        # - additionalModelRequestFields: Full Anthropic tool config with dimensions
         start_time = time.time()
         response = self.client.converse(
             modelId=self.model_id,
             messages=self.messages,
             inferenceConfig={"maxTokens": 4096},
-            toolConfig={"tools": tools_config},  # Required for continuation
-            additionalModelRequestFields=additional_fields
+            toolConfig=bedrock_tool_config,
+            additionalModelRequestFields=additional_fields_continuation
         )
         api_time = time.time() - start_time
 
