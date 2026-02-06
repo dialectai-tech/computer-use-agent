@@ -151,6 +151,87 @@ class PlaywrightController:
         screenshot_bytes = self.page.screenshot(full_page=False)
         return base64.b64encode(screenshot_bytes).decode('utf-8')
 
+    def get_accessibility_tree(self, max_depth: int = 10) -> dict:
+        """Get accessibility tree of current page.
+
+        Args:
+            max_depth: Maximum depth to traverse (default: 10)
+
+        Returns:
+            Dictionary containing accessibility tree
+        """
+        if not self.page:
+            raise RuntimeError("Browser not started. Call start() first.")
+
+        try:
+            # Get accessibility snapshot
+            tree = self.page.accessibility.snapshot(
+                interesting_only=True,  # Filter out non-interactive elements
+                root=None  # Start from page root
+            )
+
+            # Simplify tree structure for token efficiency
+            simplified = self._simplify_accessibility_tree(tree, max_depth=max_depth)
+            return simplified
+        except Exception as e:
+            # Return empty tree if accessibility snapshot fails
+            return {"error": str(e), "tree": None}
+
+    def _simplify_accessibility_tree(self, node: dict, depth: int = 0, max_depth: int = 10) -> dict:
+        """Simplify accessibility tree to reduce token usage.
+
+        Args:
+            node: Accessibility tree node
+            depth: Current depth in tree
+            max_depth: Maximum depth to traverse
+
+        Returns:
+            Simplified node dictionary
+        """
+        if not node or depth >= max_depth:
+            return None
+
+        # Extract essential properties
+        simplified = {}
+
+        # Core properties
+        if node.get('role'):
+            simplified['role'] = node['role']
+        if node.get('name'):
+            simplified['name'] = node['name'][:100]  # Truncate long names
+
+        # Important attributes
+        if node.get('value'):
+            simplified['value'] = str(node['value'])[:50]
+        if node.get('description'):
+            simplified['description'] = node['description'][:100]
+        if node.get('disabled'):
+            simplified['disabled'] = True
+        if node.get('checked') is not None:
+            simplified['checked'] = node['checked']
+        if node.get('pressed') is not None:
+            simplified['pressed'] = node['pressed']
+        if node.get('expanded') is not None:
+            simplified['expanded'] = node['expanded']
+        if node.get('modal'):
+            simplified['modal'] = True
+        if node.get('level'):
+            simplified['level'] = node['level']
+
+        # Recursively process children (limit to avoid token explosion)
+        children = node.get('children', [])
+        if children and depth < max_depth:
+            simplified_children = []
+            for child in children[:50]:  # Limit children per node
+                simplified_child = self._simplify_accessibility_tree(child, depth + 1, max_depth)
+                if simplified_child:
+                    simplified_children.append(simplified_child)
+
+            if simplified_children:
+                simplified['children'] = simplified_children
+
+        return simplified if simplified else None
+
     def execute_action(self, action: Action) -> dict:
         """Execute an action on the page.
 
@@ -271,12 +352,28 @@ class PlaywrightController:
         # Try different parameter formats
         if "coordinate" in params:
             # Claude format
-            return params["coordinate"][0], params["coordinate"][1]
+            x, y = params["coordinate"][0], params["coordinate"][1]
+
+            # Warn if coordinates are suspiciously at origin (common AI error)
+            if x == 0 and y == 0:
+                print(f"⚠️  WARNING: Coordinates are (0, 0) - AI may not be using screenshot for positioning")
+                print(f"   Action params: {params}")
+
+            return x, y
         elif "x" in params and "y" in params:
             # OpenAI format
-            return params["x"], params["y"]
+            x, y = params["x"], params["y"]
+
+            # Warn if coordinates are at origin
+            if x == 0 and y == 0:
+                print(f"⚠️  WARNING: Coordinates are (0, 0) - AI may not be using screenshot for positioning")
+                print(f"   Action params: {params}")
+
+            return x, y
         else:
             # Default to center of screen
+            print(f"⚠️  WARNING: No coordinates found in params, using center of screen")
+            print(f"   Action params: {params}")
             return self.display_width // 2, self.display_height // 2
 
     def _map_key(self, key: str) -> str:

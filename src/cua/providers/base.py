@@ -134,14 +134,16 @@ class ComputerUseProvider(ABC):
         self,
         prompt: str,
         screenshot: Optional[str] = None,
-        display_width: int = 1280,
-        display_height: int = 720
+        accessibility_tree: Optional[dict] = None,
+        display_width: int = 1024,
+        display_height: int = 768
     ) -> Any:
         """Create initial API request.
 
         Args:
             prompt: User's task description
             screenshot: Base64-encoded screenshot (optional)
+            accessibility_tree: Accessibility tree from browser (optional)
             display_width: Display width in pixels
             display_height: Display height in pixels
 
@@ -154,14 +156,16 @@ class ComputerUseProvider(ABC):
     def create_continuation_request(
         self,
         screenshot: str,
+        accessibility_tree: Optional[dict] = None,
         action_result: Optional[Dict[str, Any]] = None,
-        display_width: int = 1280,
-        display_height: int = 720
+        display_width: int = 1024,
+        display_height: int = 768
     ) -> Any:
         """Create continuation request with tool results.
 
         Args:
             screenshot: Base64-encoded screenshot
+            accessibility_tree: Accessibility tree from browser (optional)
             action_result: Result from previous action execution
             display_width: Display width in pixels
             display_height: Display height in pixels

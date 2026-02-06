@@ -100,6 +100,11 @@ console = Console()
     default=lambda: int(os.getenv("THINKING_BUDGET", "10000")),
     help="Token budget for extended thinking (default: 10000)"
 )
+@click.option(
+    "--use-accessibility-tree/--no-accessibility-tree",
+    default=True,
+    help="Use accessibility tree alongside screenshots for better web automation (default: enabled)"
+)
 def cli(
     url: str,
     prompt: str,
@@ -115,7 +120,8 @@ def cli(
     enable_caching: bool,
     context_window_size: int,
     extended_thinking: bool,
-    thinking_budget: int
+    thinking_budget: int,
+    use_accessibility_tree: bool
 ):
     """Computer Use Automation - Multi-provider AI agent for browser automation.
 
@@ -209,7 +215,8 @@ def cli(
         enable_caching=enable_caching,
         context_window_size=context_window_size,
         extended_thinking=extended_thinking,
-        thinking_budget=thinking_budget
+        thinking_budget=thinking_budget,
+        use_accessibility_tree=use_accessibility_tree
     )
 
     # Run task

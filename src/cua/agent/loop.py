@@ -37,7 +37,8 @@ class ComputerUseAgent:
         enable_caching: bool = True,
         context_window_size: int = 10,
         extended_thinking: bool = False,
-        thinking_budget: int = 10000
+        thinking_budget: int = 10000,
+        use_accessibility_tree: bool = True
     ):
         """Initialize agent.
 
@@ -53,6 +54,7 @@ class ComputerUseAgent:
             context_window_size: Number of recent screenshots to keep
             extended_thinking: Enable extended thinking for complex reasoning
             thinking_budget: Token budget for extended thinking
+            use_accessibility_tree: Use accessibility tree alongside screenshots
         """
         self.provider = provider
         self.display_width = display_width
@@ -65,6 +67,7 @@ class ComputerUseAgent:
         self.context_window_size = context_window_size
         self.extended_thinking = extended_thinking
         self.thinking_budget = thinking_budget
+        self.use_accessibility_tree = use_accessibility_tree
         self.console = Console()
         self.browser: Optional[PlaywrightController] = None
 
@@ -110,6 +113,8 @@ class ComputerUseAgent:
                 self.console.print(f"[yellow]Zoom level: {self.zoom}%[/yellow]")
             if self.enable_caching:
                 self.console.print("[yellow]Prompt caching: enabled[/yellow]")
+            if self.use_accessibility_tree:
+                self.console.print("[yellow]Accessibility tree: enabled (hybrid mode)[/yellow]")
             if self.extended_thinking:
                 self.console.print(f"[yellow]Extended thinking: enabled (budget: {self.thinking_budget})[/yellow]")
 
@@ -127,13 +132,19 @@ class ComputerUseAgent:
             self.console.print(f"[yellow]Navigating to {url}...[/yellow]")
             self.browser.navigate(url)
 
-            # Take initial screenshot
+            # Take initial screenshot and accessibility tree
             screenshot = self.browser.take_screenshot()
             self.provider.stats.add_screenshot()
+
+            # Get accessibility tree if enabled
+            accessibility_tree = None
+            if self.use_accessibility_tree:
+                accessibility_tree = self.browser.get_accessibility_tree()
 
             # Track initial screenshot
             self.screenshot_history.append({
                 "screenshot": screenshot,
+                "accessibility_tree": accessibility_tree,
                 "action_type": "initial",
                 "transient": False,
                 "important_info": None
@@ -146,6 +157,7 @@ class ComputerUseAgent:
             response = self.provider.create_initial_request(
                 prompt=prompt,
                 screenshot=screenshot,
+                accessibility_tree=accessibility_tree,
                 display_width=self.display_width,
                 display_height=self.display_height
             )
@@ -200,9 +212,14 @@ class ComputerUseAgent:
                     if not result.get("success"):
                         self.console.print(f"  [red]✗ Error: {result.get('error')}[/red]")
 
-                # Take screenshot after actions
+                # Take screenshot and accessibility tree after actions
                 screenshot = self.browser.take_screenshot()
                 self.provider.stats.add_screenshot()
+
+                # Get accessibility tree if enabled
+                accessibility_tree = None
+                if self.use_accessibility_tree:
+                    accessibility_tree = self.browser.get_accessibility_tree()
 
                 # Get response text and extract memory signals
                 response_text = self.provider.get_response_text(response)
@@ -220,6 +237,7 @@ class ComputerUseAgent:
                 is_transient = memory_signals["transient"] or last_action_transient
                 self.screenshot_history.append({
                     "screenshot": screenshot,
+                    "accessibility_tree": accessibility_tree,
                     "action_type": actions[0].type.value if actions else "unknown",
                     "transient": is_transient,
                     "important_info": memory_signals["important_info"]
@@ -235,6 +253,7 @@ class ComputerUseAgent:
                 # Continue conversation (only with recent screenshots in context)
                 response = self.provider.create_continuation_request(
                     screenshot=screenshot,
+                    accessibility_tree=accessibility_tree,
                     display_width=self.display_width,
                     display_height=self.display_height
                 )

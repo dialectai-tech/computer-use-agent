@@ -146,22 +146,60 @@ class BedrockProvider(ComputerUseProvider):
         self,
         prompt: str,
         screenshot: Optional[str] = None,
-        display_width: int = 1280,
-        display_height: int = 720
+        accessibility_tree: Optional[dict] = None,
+        display_width: int = 1024,
+        display_height: int = 768
     ) -> Any:
         """Create initial API request using Bedrock Converse API.
 
         Args:
             prompt: User's task description
             screenshot: Base64-encoded screenshot (optional)
+            accessibility_tree: Accessibility tree from browser (optional)
             display_width: Display width in pixels
             display_height: Display height in pixels
 
         Returns:
             Bedrock Converse API response
         """
+        # Build message content with hybrid guide
+        hybrid_guide = ""
+        if accessibility_tree and not accessibility_tree.get("error"):
+            hybrid_guide = """
+
+HYBRID MODE: You have access to BOTH screenshot and accessibility tree.
+
+**CRITICAL: How to use them together:**
+1. **Accessibility Tree** - Use this to IDENTIFY what element you need (e.g., role="button" name="Submit")
+   - Shows semantic structure, element names, roles, states
+   - Reveals elements even if not visible in screenshot (scrolled content, collapsed sections)
+   - Shows hierarchy (what's inside modals, forms, etc.)
+
+2. **Screenshot** - Use this to LOCATE where the element is visually and GET COORDINATES
+   - The tree does NOT contain pixel coordinates
+   - You MUST look at the screenshot to find the visual position of elements
+   - Match element names from tree to visual elements in screenshot
+
+**Workflow:**
+1. Read the accessibility tree to understand available elements and page structure
+2. Identify which element you need to interact with (by role and name)
+3. Look at the screenshot to visually locate that element
+4. Use the element's position in the screenshot to determine click coordinates
+
+**Example:**
+- Tree shows: `{"role": "button", "name": "Submit & Continue"}`
+- Look at screenshot to find button labeled "Submit & Continue"
+- Click at the coordinates where you see that button in the screenshot
+"""
+
         # Build message content for Converse API format
-        content = [{"text": prompt}]
+        content = [{"text": prompt + hybrid_guide}]
+
+        # Add accessibility tree if available
+        if accessibility_tree and not accessibility_tree.get("error"):
+            import json
+            tree_text = f"\n\n**Accessibility Tree:**\n```json\n{json.dumps(accessibility_tree, indent=2)}\n```"
+            content.append({"text": tree_text})
 
         if screenshot:
             # Decode base64 screenshot to bytes for Converse API
@@ -249,14 +287,16 @@ class BedrockProvider(ComputerUseProvider):
     def create_continuation_request(
         self,
         screenshot: str,
+        accessibility_tree: Optional[dict] = None,
         action_result: Optional[Dict[str, Any]] = None,
-        display_width: int = 1280,
-        display_height: int = 720
+        display_width: int = 1024,
+        display_height: int = 768
     ) -> Any:
         """Create continuation request with tool results.
 
         Args:
             screenshot: Base64-encoded screenshot
+            accessibility_tree: Accessibility tree from browser (optional)
             action_result: Result from previous action execution
             display_width: Display width in pixels
             display_height: Display height in pixels
@@ -273,14 +313,23 @@ class BedrockProvider(ComputerUseProvider):
 
             # Format tool result based on tool type
             if tool_name == "computer":
+                # Return accessibility tree and screenshot
+                result_content = []
+
+                # Add accessibility tree first (so it's read before image)
+                if accessibility_tree and not accessibility_tree.get("error"):
+                    import json
+                    tree_text = f"**Updated Accessibility Tree:**\n```json\n{json.dumps(accessibility_tree, indent=2)}\n```"
+                    result_content.append({"text": tree_text})
+
                 # Return screenshot as image
                 screenshot_bytes = base64.b64decode(screenshot)
-                result_content = [{
+                result_content.append({
                     "image": {
                         "format": "png",
                         "source": {"bytes": screenshot_bytes}
                     }
-                }]
+                })
             elif tool_name == "bash":
                 # Return command output as text
                 output = action_result.get("output", "") if action_result else ""

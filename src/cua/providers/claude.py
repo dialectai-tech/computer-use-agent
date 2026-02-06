@@ -26,22 +26,60 @@ class ClaudeProvider(ComputerUseProvider):
         self,
         prompt: str,
         screenshot: Optional[str] = None,
-        display_width: int = 1280,
-        display_height: int = 720
+        accessibility_tree: Optional[dict] = None,
+        display_width: int = 1024,
+        display_height: int = 768
     ) -> Any:
         """Create initial API request to Claude.
 
         Args:
             prompt: User's task description
             screenshot: Base64-encoded screenshot (optional)
+            accessibility_tree: Accessibility tree from browser (optional)
             display_width: Display width in pixels
             display_height: Display height in pixels
 
         Returns:
             Claude API response
         """
-        # Build initial message content
-        content = [{"type": "text", "text": prompt}]
+        # Build initial message content with hybrid approach guide
+        hybrid_guide = ""
+        if accessibility_tree and not accessibility_tree.get("error"):
+            hybrid_guide = """
+
+HYBRID MODE: You have access to BOTH screenshot and accessibility tree.
+
+**CRITICAL: How to use them together:**
+1. **Accessibility Tree** - Use this to IDENTIFY what element you need
+   - Shows semantic structure: roles (button, input, link), names, states (checked, disabled)
+   - Reveals ALL elements even if scrolled out of view in screenshot
+   - Shows hierarchy (what's inside modals, forms, scrollable containers)
+   - Example: `{"role": "button", "name": "Submit & Continue"}`
+
+2. **Screenshot** - Use this to LOCATE where the element is and GET COORDINATES
+   - The accessibility tree does NOT contain pixel coordinates
+   - You MUST look at the screenshot to find visual positions
+   - Match element names from tree to visual elements in screenshot
+
+**Workflow:**
+1. Read accessibility tree to understand available elements and page structure
+2. Identify which element you need (by role and name from tree)
+3. Look at screenshot to visually locate that specific element
+4. Use the element's visual position in screenshot for click coordinates
+
+**Example:**
+- Tree: `{"role": "button", "name": "Dismiss"}` ← Know WHAT to click
+- Screenshot: Look for button labeled "Dismiss" ← Know WHERE to click
+- Click at the coordinates where "Dismiss" button appears in screenshot
+"""
+
+        content = [{"type": "text", "text": prompt + hybrid_guide}]
+
+        # Add accessibility tree if available
+        if accessibility_tree and not accessibility_tree.get("error"):
+            import json
+            tree_text = f"\n\n**Accessibility Tree:**\n```json\n{json.dumps(accessibility_tree, indent=2)}\n```"
+            content.append({"type": "text", "text": tree_text})
 
         if screenshot:
             screenshot_block = {
@@ -120,14 +158,16 @@ class ClaudeProvider(ComputerUseProvider):
     def create_continuation_request(
         self,
         screenshot: str,
+        accessibility_tree: Optional[dict] = None,
         action_result: Optional[Dict[str, Any]] = None,
-        display_width: int = 1280,
-        display_height: int = 720
+        display_width: int = 1024,
+        display_height: int = 768
     ) -> Any:
         """Create continuation request with tool results.
 
         Args:
             screenshot: Base64-encoded screenshot
+            accessibility_tree: Accessibility tree from browser (optional)
             action_result: Result from previous action execution
             display_width: Display width in pixels
             display_height: Display height in pixels
@@ -146,16 +186,30 @@ class ClaudeProvider(ComputerUseProvider):
                         "tool_use_id": block.id,
                     }
 
-                    # For computer tool, return screenshot
+                    # For computer tool, return screenshot and optionally accessibility tree
                     if block.name == "computer":
-                        tool_result["content"] = [{
+                        content_blocks = []
+
+                        # Add accessibility tree first (so it's read before image)
+                        if accessibility_tree and not accessibility_tree.get("error"):
+                            import json
+                            tree_text = f"**Updated Accessibility Tree:**\n```json\n{json.dumps(accessibility_tree, indent=2)}\n```"
+                            content_blocks.append({
+                                "type": "text",
+                                "text": tree_text
+                            })
+
+                        # Add screenshot
+                        content_blocks.append({
                             "type": "image",
                             "source": {
                                 "type": "base64",
                                 "media_type": "image/png",
                                 "data": screenshot
                             }
-                        }]
+                        })
+
+                        tool_result["content"] = content_blocks
                     elif block.name == "bash":
                         # For bash tool, return command output
                         tool_result["content"] = action_result.get("output", "") if action_result else ""
