@@ -9,6 +9,7 @@ from rich.console import Console
 from cua.agent.loop import ComputerUseAgent
 from cua.providers.claude import ClaudeProvider
 from cua.providers.openai import OpenAIProvider
+from cua.providers.bedrock import BedrockProvider
 
 # Load environment variables
 load_dotenv()
@@ -29,7 +30,7 @@ console = Console()
 )
 @click.option(
     "--provider",
-    type=click.Choice(["claude", "openai"], case_sensitive=False),
+    type=click.Choice(["claude", "openai", "bedrock"], case_sensitive=False),
     default=lambda: os.getenv("PROVIDER", "claude"),
     help="AI provider to use (default: from .env or claude)"
 )
@@ -61,6 +62,16 @@ console = Console()
     default=True,
     help="Run browser in headless mode (default: True)"
 )
+@click.option(
+    "--record-video/--no-record-video",
+    default=False,
+    help="Record video of the browser session (default: False)"
+)
+@click.option(
+    "--video-dir",
+    default="./recordings",
+    help="Directory to save video recordings (default: ./recordings)"
+)
 def cli(
     url: str,
     prompt: str,
@@ -69,7 +80,9 @@ def cli(
     max_iterations: int,
     display_width: int,
     display_height: int,
-    headless: bool
+    headless: bool,
+    record_video: bool,
+    video_dir: str
 ):
     """Computer Use Automation - Multi-provider AI agent for browser automation.
 
@@ -109,6 +122,35 @@ def cli(
             model = model or "computer-use-preview"
             ai_provider = OpenAIProvider(api_key=api_key, model=model)
 
+        elif provider.lower() == "bedrock":
+            # Bedrock uses AWS credential chain
+            # Priority: AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY > AWS_BEARER_TOKEN_BEDROCK > IAM Role
+            model = model or os.getenv("BEDROCK_MODEL", "claude-sonnet-4-5")
+            region = os.getenv("AWS_REGION", "us-east-1")
+
+            # Check if any AWS credentials are configured
+            has_credentials = (
+                os.getenv("AWS_ACCESS_KEY_ID") or
+                os.getenv("AWS_BEARER_TOKEN_BEDROCK") or
+                os.getenv("AWS_SESSION_TOKEN")
+            )
+
+            if not has_credentials:
+                console.print("[bold yellow]Warning: No AWS credentials found in environment[/bold yellow]")
+                console.print("Bedrock will attempt to use IAM role or ~/.aws/credentials")
+                console.print("\nTo authenticate, set one of:")
+                console.print("  - AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY")
+                console.print("  - AWS_BEARER_TOKEN_BEDROCK (mapped to AWS_SESSION_TOKEN)")
+                console.print("  - Use IAM role (if running on AWS EC2/ECS)")
+                console.print()
+
+            try:
+                ai_provider = BedrockProvider(model=model, region=region)
+            except Exception as e:
+                console.print(f"[bold red]Error initializing Bedrock provider: {str(e)}[/bold red]")
+                console.print("\nPlease ensure you have valid AWS credentials configured.")
+                sys.exit(1)
+
         else:
             console.print(f"[bold red]Error: Unknown provider '{provider}'[/bold red]")
             sys.exit(1)
@@ -127,7 +169,9 @@ def cli(
         provider=ai_provider,
         display_width=display_width,
         display_height=display_height,
-        headless=headless
+        headless=headless,
+        record_video=record_video,
+        video_dir=video_dir
     )
 
     # Run task
@@ -148,6 +192,21 @@ def cli(
 
     if result.error:
         console.print(f"Error: [red]{result.error}[/red]")
+
+    # Display stats if available
+    if result.stats:
+        console.print("\n[bold cyan]═══ Statistics ═══[/bold cyan]")
+        console.print(f"API Calls: {result.stats['api_calls']}")
+        console.print(f"Input Tokens: {result.stats['input_tokens']:,}")
+        console.print(f"Output Tokens: {result.stats['output_tokens']:,}")
+        console.print(f"Total Tokens: {result.stats['total_tokens']:,}")
+        console.print(f"Screenshots: {result.stats['screenshots_taken']}")
+        console.print(f"Actions: {result.stats['actions_executed']}")
+        console.print(f"Avg API Time: {result.stats['avg_api_time']:.2f}s")
+
+    # Display video path if recorded
+    if result.video_path:
+        console.print(f"\n[green]✓ Video saved: {result.video_path}[/green]")
 
     console.print()
 

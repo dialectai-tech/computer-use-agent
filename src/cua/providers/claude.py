@@ -1,6 +1,7 @@
 """Claude (Anthropic) provider implementation."""
 
 from typing import Any, Dict, List, Optional
+import time
 import anthropic
 
 from cua.providers.base import ComputerUseProvider, Action, ActionType
@@ -55,6 +56,7 @@ class ClaudeProvider(ComputerUseProvider):
         self.messages = [{"role": "user", "content": content}]
 
         # Create request with computer use tool
+        start_time = time.time()
         response = self.client.beta.messages.create(
             model=self.model,
             max_tokens=2048,
@@ -74,6 +76,15 @@ class ClaudeProvider(ComputerUseProvider):
             messages=self.messages,
             betas=["computer-use-2025-01-24"]
         )
+        api_time = time.time() - start_time
+
+        # Track stats
+        self.stats.add_api_call(api_time)
+        if hasattr(response, 'usage'):
+            self.stats.add_tokens(
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens
+            )
 
         self.last_response = response
         # Add assistant response to conversation
@@ -136,6 +147,7 @@ class ClaudeProvider(ComputerUseProvider):
         })
 
         # Create continuation request
+        start_time = time.time()
         response = self.client.beta.messages.create(
             model=self.model,
             max_tokens=2048,
@@ -155,6 +167,15 @@ class ClaudeProvider(ComputerUseProvider):
             messages=self.messages,
             betas=["computer-use-2025-01-24"]
         )
+        api_time = time.time() - start_time
+
+        # Track stats
+        self.stats.add_api_call(api_time)
+        if hasattr(response, 'usage'):
+            self.stats.add_tokens(
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens
+            )
 
         self.last_response = response
         # Add assistant response to conversation

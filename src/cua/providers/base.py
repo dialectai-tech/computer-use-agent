@@ -1,7 +1,7 @@
 """Base provider interface for computer use automation."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 import time
@@ -34,6 +34,72 @@ class Action:
             self.timestamp = time.time()
 
 
+@dataclass
+class ProviderStats:
+    """Statistics for provider API usage."""
+    api_calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    screenshots_taken: int = 0
+    actions_executed: int = 0
+    total_api_time: float = 0.0
+    api_call_times: List[float] = field(default_factory=list)
+
+    def add_tokens(self, input_tokens: int = 0, output_tokens: int = 0):
+        """Add token usage.
+
+        Args:
+            input_tokens: Number of input tokens
+            output_tokens: Number of output tokens
+        """
+        self.input_tokens += input_tokens
+        self.output_tokens += output_tokens
+        self.total_tokens += input_tokens + output_tokens
+
+    def add_api_call(self, duration: float):
+        """Record an API call.
+
+        Args:
+            duration: Time taken for the API call in seconds
+        """
+        self.api_calls += 1
+        self.total_api_time += duration
+        self.api_call_times.append(duration)
+
+    def add_screenshot(self):
+        """Increment screenshot counter."""
+        self.screenshots_taken += 1
+
+    def add_action(self):
+        """Increment action counter."""
+        self.actions_executed += 1
+
+    @property
+    def avg_api_time(self) -> float:
+        """Get average API call time."""
+        if self.api_calls == 0:
+            return 0.0
+        return self.total_api_time / self.api_calls
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert stats to dictionary.
+
+        Returns:
+            Dictionary representation of stats
+        """
+        return {
+            "api_calls": self.api_calls,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "screenshots_taken": self.screenshots_taken,
+            "actions_executed": self.actions_executed,
+            "total_api_time": self.total_api_time,
+            "avg_api_time": self.avg_api_time,
+        }
+
+
 class ComputerUseProvider(ABC):
     """Abstract base class for computer use providers."""
 
@@ -47,6 +113,7 @@ class ComputerUseProvider(ABC):
         self.api_key = api_key
         self.model = model
         self.conversation_history = []
+        self.stats = ProviderStats()
 
     @abstractmethod
     def create_initial_request(

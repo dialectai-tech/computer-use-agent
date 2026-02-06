@@ -12,7 +12,14 @@
       "Bash(docker compose build:*)",
       "Bash(docker compose:*)",
       "Bash(python -c:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python:*)",
+      "WebFetch(domain:www.anthropic.com)",
+      "Bash(curl:*)",
+      "WebFetch(domain:aws.amazon.com)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

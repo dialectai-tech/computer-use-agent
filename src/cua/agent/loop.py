@@ -18,6 +18,8 @@ class TaskResult:
     total_time: float
     error: Optional[str] = None
     final_url: Optional[str] = None
+    stats: Optional[dict] = None
+    video_path: Optional[str] = None
 
 
 class ComputerUseAgent:
@@ -28,7 +30,9 @@ class ComputerUseAgent:
         provider: ComputerUseProvider,
         display_width: int = 1280,
         display_height: int = 720,
-        headless: bool = True
+        headless: bool = True,
+        record_video: bool = False,
+        video_dir: Optional[str] = None
     ):
         """Initialize agent.
 
@@ -37,11 +41,15 @@ class ComputerUseAgent:
             display_width: Browser viewport width
             display_height: Browser viewport height
             headless: Whether to run browser in headless mode
+            record_video: Whether to record video of the session
+            video_dir: Directory to save videos
         """
         self.provider = provider
         self.display_width = display_width
         self.display_height = display_height
         self.headless = headless
+        self.record_video = record_video
+        self.video_dir = video_dir
         self.console = Console()
         self.browser: Optional[PlaywrightController] = None
 
@@ -72,10 +80,14 @@ class ComputerUseAgent:
         try:
             # Initialize browser
             self.console.print("[yellow]Starting browser...[/yellow]")
+            if self.record_video:
+                self.console.print("[yellow]Video recording enabled[/yellow]")
             self.browser = PlaywrightController(
                 display_width=self.display_width,
                 display_height=self.display_height,
-                headless=self.headless
+                headless=self.headless,
+                record_video=self.record_video,
+                video_dir=self.video_dir
             )
             self.browser.start()
 
@@ -85,6 +97,7 @@ class ComputerUseAgent:
 
             # Take initial screenshot
             screenshot = self.browser.take_screenshot()
+            self.provider.stats.add_screenshot()
 
             # Create initial request
             self.console.print(f"[yellow]Sending task to AI...[/yellow]")
@@ -117,7 +130,9 @@ class ComputerUseAgent:
                         success=True,
                         iterations=iteration,
                         total_time=total_time,
-                        final_url=page_info.get("url")
+                        final_url=page_info.get("url"),
+                        stats=self.provider.stats.to_dict(),
+                        video_path=self.browser.get_video_path() if self.browser else None
                     )
 
                 # Extract and execute actions
@@ -133,12 +148,14 @@ class ComputerUseAgent:
 
                     # Execute action
                     result = self.browser.execute_action(action)
+                    self.provider.stats.add_action()
 
                     if not result.get("success"):
                         self.console.print(f"  [red]✗ Error: {result.get('error')}[/red]")
 
                 # Take screenshot after actions
                 screenshot = self.browser.take_screenshot()
+                self.provider.stats.add_screenshot()
 
                 # Get response text
                 response_text = self.provider.get_response_text(response)
@@ -166,7 +183,9 @@ class ComputerUseAgent:
                 iterations=iteration,
                 total_time=total_time,
                 error="Max iterations reached",
-                final_url=page_info.get("url")
+                final_url=page_info.get("url"),
+                stats=self.provider.stats.to_dict(),
+                video_path=self.browser.get_video_path() if self.browser else None
             )
 
         except Exception as e:
@@ -177,7 +196,9 @@ class ComputerUseAgent:
                 success=False,
                 iterations=iteration,
                 total_time=total_time,
-                error=str(e)
+                error=str(e),
+                stats=self.provider.stats.to_dict() if hasattr(self.provider, 'stats') else None,
+                video_path=self.browser.get_video_path() if self.browser else None
             )
 
         finally:

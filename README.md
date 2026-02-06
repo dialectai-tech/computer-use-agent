@@ -222,6 +222,22 @@ python -m cua.main \
   --url "https://example.com" \
   --prompt "Navigate and complete checkout"
 
+# Use AWS Bedrock (requires AWS credentials)
+python -m cua.main \
+  --provider bedrock \
+  --model sonnet \
+  --url "https://example.com" \
+  --prompt "Complete the task"
+
+# With video recording and stats
+python -m cua.main \
+  --provider bedrock \
+  --model haiku \
+  --url "https://example.com" \
+  --prompt "Quick task" \
+  --record-video \
+  --max-iterations 50
+
 # Enable VNC viewing
 python -m cua.main \
   --url "https://example.com" \
@@ -313,6 +329,29 @@ for page in result.page_metrics:
 
 **OpenAI Models:**
 - `computer-use-preview` (only option currently)
+
+**AWS Bedrock (Claude via Bedrock Converse API):**
+
+**Sonnet models (balanced speed/quality):**
+- `sonnet` or `sonnet-3.5` - Claude 3.5 Sonnet v2 ⭐ (proven for Computer Use)
+- `sonnet-3.7` - Claude 3.7 Sonnet
+- `sonnet-4` - Claude Sonnet 4
+- `sonnet-4.5` or `sonnet-latest` - Claude Sonnet 4.5 (newest)
+
+**Haiku models (fastest, cheapest):**
+- `haiku` or `haiku-4.5` - Claude Haiku 4.5 (latest)
+- `haiku-3.5` - Claude 3.5 Haiku
+- `haiku-3` - Claude 3 Haiku
+
+**Opus models (highest quality, slowest):**
+- `opus` or `opus-4.5` - Claude Opus 4.5
+- `opus-4.6` or `opus-latest` - Claude Opus 4.6 (newest)
+- `opus-4`, `opus-4.1` - Earlier Opus 4 versions
+
+**Requirements:**
+- AWS Bedrock model access (request in console)
+- AWS credentials: `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` or `AWS_BEARER_TOKEN_BEDROCK`
+- Uses Converse API with inference profiles
 
 ### Display Settings
 

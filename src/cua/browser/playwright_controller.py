@@ -2,6 +2,9 @@
 
 import base64
 import time
+import os
+from pathlib import Path
+from datetime import datetime
 from typing import Optional
 from playwright.sync_api import sync_playwright, Page, Browser
 
@@ -11,20 +14,32 @@ from cua.providers.base import Action, ActionType
 class PlaywrightController:
     """Controller for browser automation using Playwright."""
 
-    def __init__(self, display_width: int = 1280, display_height: int = 720, headless: bool = True):
+    def __init__(
+        self,
+        display_width: int = 1280,
+        display_height: int = 720,
+        headless: bool = True,
+        record_video: bool = False,
+        video_dir: Optional[str] = None
+    ):
         """Initialize Playwright controller.
 
         Args:
             display_width: Browser viewport width
             display_height: Browser viewport height
             headless: Whether to run browser in headless mode
+            record_video: Whether to record video of the session
+            video_dir: Directory to save videos (default: ./recordings)
         """
         self.display_width = display_width
         self.display_height = display_height
         self.headless = headless
+        self.record_video = record_video
+        self.video_dir = video_dir or "./recordings"
         self.playwright = None
         self.browser: Optional[Browser] = None
         self.page: Optional[Page] = None
+        self.video_path: Optional[str] = None
 
     def start(self):
         """Start the browser."""
@@ -36,20 +51,62 @@ class PlaywrightController:
                 '--disable-dev-shm-usage',
             ]
         )
-        self.page = self.browser.new_page()
-        self.page.set_viewport_size({
-            "width": self.display_width,
-            "height": self.display_height
-        })
+
+        # Setup video recording if enabled
+        context_options = {
+            "viewport": {
+                "width": self.display_width,
+                "height": self.display_height
+            }
+        }
+
+        if self.record_video:
+            # Create recordings directory if it doesn't exist
+            Path(self.video_dir).mkdir(parents=True, exist_ok=True)
+
+            # Generate video filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            video_filename = f"cua_session_{timestamp}.webm"
+            self.video_path = os.path.join(self.video_dir, video_filename)
+
+            context_options["record_video_dir"] = self.video_dir
+            context_options["record_video_size"] = {
+                "width": self.display_width,
+                "height": self.display_height
+            }
+
+        # Create browser context
+        context = self.browser.new_context(**context_options)
+        self.page = context.new_page()
 
     def stop(self):
-        """Stop the browser."""
+        """Stop the browser and save video if recording."""
         if self.page:
+            # Close page and context to finalize video
+            context = self.page.context
             self.page.close()
+            if self.record_video:
+                context.close()  # This finalizes the video
         if self.browser:
             self.browser.close()
         if self.playwright:
             self.playwright.stop()
+
+    def get_video_path(self) -> Optional[str]:
+        """Get the path to the recorded video.
+
+        Returns:
+            Path to video file, or None if not recording
+        """
+        if self.record_video and self.page:
+            try:
+                # Get the actual video path from the page
+                video = self.page.video
+                if video:
+                    return video.path()
+            except Exception:
+                pass
+        return None
 
     def navigate(self, url: str):
         """Navigate to URL.
