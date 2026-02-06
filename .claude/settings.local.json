@@ -22,7 +22,8 @@
       "WebFetch(domain:github.com)",
       "Bash(cua:*)",
       "Bash(python3:*)",
-      "WebFetch(domain:boto3.amazonaws.com)"
+      "WebFetch(domain:boto3.amazonaws.com)",
+      "WebFetch(domain:docs.anthropic.com)"
     ]
   }
 }
