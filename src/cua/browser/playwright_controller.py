@@ -304,11 +304,61 @@ class PlaywrightController:
                     scroll_x = 0
                     scroll_y = 300  # Default scroll down
 
-                # Move mouse to position and scroll
+                # Move mouse to position first
                 self.page.mouse.move(x, y)
-                self.page.evaluate(f"window.scrollBy({scroll_x}, {scroll_y})")
+
+                # Try to scroll the element at these coordinates, not just the window
+                # This JavaScript finds the scrollable element at the coordinates and scrolls it
+                scroll_result = self.page.evaluate(f"""
+                    (function() {{
+                        // Get the element at the coordinates
+                        const element = document.elementFromPoint({x}, {y});
+                        if (!element) {{
+                            window.scrollBy({scroll_x}, {scroll_y});
+                            return {{"scrolled": "window", "element": null}};
+                        }}
+
+                        // Find the nearest scrollable ancestor (including the element itself)
+                        let scrollableElement = element;
+                        while (scrollableElement && scrollableElement !== document.documentElement) {{
+                            const style = window.getComputedStyle(scrollableElement);
+                            const overflowY = style.overflowY;
+                            const overflowX = style.overflowX;
+
+                            // Check if element is scrollable
+                            const isScrollableY = (overflowY === 'scroll' || overflowY === 'auto') &&
+                                                scrollableElement.scrollHeight > scrollableElement.clientHeight;
+                            const isScrollableX = (overflowX === 'scroll' || overflowX === 'auto') &&
+                                                scrollableElement.scrollWidth > scrollableElement.clientWidth;
+
+                            if (isScrollableY || isScrollableX) {{
+                                // Found scrollable element - scroll it
+                                scrollableElement.scrollBy({scroll_x}, {scroll_y});
+                                return {{
+                                    "scrolled": "element",
+                                    "element": scrollableElement.tagName,
+                                    "class": scrollableElement.className,
+                                    "id": scrollableElement.id
+                                }};
+                            }}
+
+                            scrollableElement = scrollableElement.parentElement;
+                        }}
+
+                        // If no scrollable ancestor found, scroll the window
+                        window.scrollBy({scroll_x}, {scroll_y});
+                        return {{"scrolled": "window", "element": null}};
+                    }})()
+                """)
+
                 time.sleep(0.5)
-                return {"success": True, "action": "scroll", "x": x, "y": y}
+                return {
+                    "success": True,
+                    "action": "scroll",
+                    "x": x,
+                    "y": y,
+                    "scroll_result": scroll_result
+                }
 
             elif action.type == ActionType.WAIT:
                 time.sleep(2)

@@ -176,7 +176,16 @@ When using the computer tool with click actions, you MUST provide coordinates:
 - ❌ WRONG: {"action": "click"} (missing coordinate!)
 - ❌ WRONG: {"action": "left_click"} (missing coordinate!)
 
-Look at the screenshot to find the visual position of the element you want to click, then provide its [x, y] pixel coordinates."""
+Look at the screenshot to find the visual position of the element you want to click, then provide its [x, y] pixel coordinates.
+
+**SCROLLING IN MODALS/DIALOGS:**
+When you need to scroll within a modal, dialog, or any scrollable container:
+1. Position your mouse INSIDE the modal/container area (provide coordinates within the modal bounds)
+2. Use the scroll action with those coordinates
+3. The system will automatically find and scroll the scrollable container at that position
+4. Take a screenshot after scrolling to verify the modal content scrolled
+
+Example: If a modal is centered at x=500, y=300, use {"action": "scroll", "coordinate": [500, 300], "scroll_direction": "down"}"""
 
         hybrid_guide = ""
         if accessibility_tree and not accessibility_tree.get("error"):

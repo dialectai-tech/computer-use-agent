@@ -49,7 +49,10 @@ You are an AUTONOMOUS agent. Take actions, observe results via screenshots, and 
 
 **CRITICAL - Tool Usage:**
 Click actions MUST include coordinates: {"action": "click", "x": 640, "y": 480}
-Look at screenshot to find element position."""
+Look at screenshot to find element position.
+
+**SCROLLING IN MODALS/DIALOGS:**
+To scroll within a modal or dialog: Position coordinates INSIDE the modal area, then use scroll action. The system will scroll the modal container at that position. Take a screenshot after to verify."""
 
         # Build hybrid guide if accessibility tree is available
         hybrid_guide = ""
