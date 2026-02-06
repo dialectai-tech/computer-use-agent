@@ -1,4 +1,4 @@
-"""CLI interface for Computer Use Automation."""
+"""CL I interface for Computer Use Automation."""
 
 import os
 import sys

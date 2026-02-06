@@ -11,7 +11,8 @@
       "Bash(docker-compose build:*)",
       "Bash(docker compose build:*)",
       "Bash(docker compose:*)",
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(chmod:*)"
     ]
   }
 }

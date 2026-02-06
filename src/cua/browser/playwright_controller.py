@@ -216,6 +216,7 @@ class PlaywrightController:
         key_map = {
             "Return": "Enter",
             "ENTER": "Enter",
+            "Enter": "Enter",
             "Space": " ",
             "SPACE": " ",
             "Tab": "Tab",
@@ -223,10 +224,17 @@ class PlaywrightController:
             "Backspace": "Backspace",
             "Delete": "Delete",
             "Escape": "Escape",
+            "ESC": "Escape",
             "ArrowUp": "ArrowUp",
             "ArrowDown": "ArrowDown",
             "ArrowLeft": "ArrowLeft",
             "ArrowRight": "ArrowRight",
+            "PageDown": "PageDown",
+            "Page_Down": "PageDown",
+            "PageUp": "PageUp",
+            "Page_Up": "PageUp",
+            "Home": "Home",
+            "End": "End",
         }
 
         return key_map.get(key, key)
