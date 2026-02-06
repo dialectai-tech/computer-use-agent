@@ -135,6 +135,7 @@ class ComputerUseProvider(ABC):
         prompt: str,
         screenshot: Optional[str] = None,
         accessibility_tree: Optional[dict] = None,
+        page_text: Optional[str] = None,
         display_width: int = 1024,
         display_height: int = 768
     ) -> Any:
@@ -144,6 +145,7 @@ class ComputerUseProvider(ABC):
             prompt: User's task description
             screenshot: Base64-encoded screenshot (optional)
             accessibility_tree: Accessibility tree from browser (optional)
+            page_text: Extracted text content from page (optional)
             display_width: Display width in pixels
             display_height: Display height in pixels
 
@@ -157,6 +159,7 @@ class ComputerUseProvider(ABC):
         self,
         screenshot: str,
         accessibility_tree: Optional[dict] = None,
+        page_text: Optional[str] = None,
         action_result: Optional[Dict[str, Any]] = None,
         display_width: int = 1024,
         display_height: int = 768
@@ -166,6 +169,7 @@ class ComputerUseProvider(ABC):
         Args:
             screenshot: Base64-encoded screenshot
             accessibility_tree: Accessibility tree from browser (optional)
+            page_text: Extracted text content from page (optional)
             action_result: Result from previous action execution
             display_width: Display width in pixels
             display_height: Display height in pixels

@@ -87,13 +87,26 @@ class PlaywrightController:
         if self.page:
             # Close page and context to finalize video
             context = self.page.context
-            self.page.close()
+            try:
+                self.page.close()
+            except Exception as e:
+                print(f"Warning: Error closing page: {e}")
+
             if self.record_video:
-                context.close()  # This finalizes the video
+                try:
+                    context.close()  # This finalizes the video
+                except Exception as e:
+                    print(f"Warning: Error closing context: {e}")
         if self.browser:
-            self.browser.close()
+            try:
+                self.browser.close()
+            except Exception as e:
+                print(f"Warning: Error closing browser: {e}")
         if self.playwright:
-            self.playwright.stop()
+            try:
+                self.playwright.stop()
+            except Exception as e:
+                print(f"Warning: Error stopping playwright: {e}")
 
     def get_video_path(self) -> Optional[str]:
         """Get the path to the recorded video.
@@ -409,6 +422,48 @@ class PlaywrightController:
 
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    def get_page_text(self) -> str:
+        """Extract all visible text from the page.
+
+        Returns:
+            String containing all visible text content
+        """
+        if not self.page:
+            return ""
+
+        try:
+            # Extract all visible text content from the page body
+            text = self.page.evaluate("""
+                () => {
+                    // Get all text content, removing script/style tags
+                    const body = document.body;
+                    const elements = body.querySelectorAll('*');
+                    const textParts = [];
+
+                    for (const el of elements) {
+                        // Skip script, style, and hidden elements
+                        if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'NOSCRIPT') {
+                            continue;
+                        }
+
+                        // Get direct text nodes only (not from children)
+                        for (const node of el.childNodes) {
+                            if (node.nodeType === Node.TEXT_NODE) {
+                                const text = node.textContent.trim();
+                                if (text) {
+                                    textParts.push(text);
+                                }
+                            }
+                        }
+                    }
+
+                    return textParts.join('\\n');
+                }
+            """)
+            return text
+        except Exception as e:
+            return f"Error extracting page text: {str(e)}"
 
     def get_page_info(self) -> dict:
         """Get information about current page.

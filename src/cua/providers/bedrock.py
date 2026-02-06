@@ -147,6 +147,7 @@ class BedrockProvider(ComputerUseProvider):
         prompt: str,
         screenshot: Optional[str] = None,
         accessibility_tree: Optional[dict] = None,
+        page_text: Optional[str] = None,
         display_width: int = 1024,
         display_height: int = 768
     ) -> Any:
@@ -172,59 +173,69 @@ If you need to see the current state, use the screenshot action - never ask the 
 
         # CRITICAL: Put accessibility tree guide FIRST if available
         hybrid_guide = ""
-        if accessibility_tree and not accessibility_tree.get("error"):
+        if accessibility_tree and not accessibility_tree.get("error") or page_text:
             hybrid_guide = """
 
 ═══════════════════════════════════════════════════════════════
-🚨 CRITICAL: YOU HAVE AN ACCESSIBILITY TREE - USE IT FIRST! 🚨
+🚨 CRITICAL: YOU HAVE PAGE TEXT & ACCESSIBILITY TREE! 🚨
 ═══════════════════════════════════════════════════════════════
 
-Before you do ANYTHING else (especially scrolling), you MUST:
+⚠️ STOP! Before you scroll even ONCE, you MUST:
 
-**STEP 1: READ THE ACCESSIBILITY TREE BELOW**
-The tree shows ALL page content instantly - codes, buttons, text, everything!
-You do NOT need to scroll to find content - it's already in the tree!
+**STEP 1: READ THE PAGE TEXT BELOW (ALL visible text on the page)**
+**STEP 2: READ THE ACCESSIBILITY TREE BELOW (ALL page structure)**
 
-**EXAMPLE - Finding a 6-character code:**
-Instead of scrolling for 40 iterations like this:
+These show EVERYTHING on the page - you do NOT need to scroll!
+
+**EXAMPLE - Finding a 6-character code (THE WRONG WAY):**
   ❌ "Let me scroll down to find the code"
   ❌ "Let me scroll more to look for the code"
   ❌ "Still scrolling to find the code..."
-  ❌ [wastes 40 iterations and fails]
+  ❌ "Maybe I'll try pressing Ctrl+F"
+  ❌ "Let me scroll up to check"
+  ❌ [wastes 40 iterations, finds nothing, gives up]
 
-Do this in 1 iteration:
-  ✅ "I'll check the accessibility tree for text containing a 6-character code"
-  ✅ Found in tree: {"role": "text", "name": "Your code: AJAF5H"}
-  ✅ "The code is AJAF5H, now I'll enter it"
-  ✅ [Success in 3 iterations!]
+**EXAMPLE - Finding a 6-character code (THE RIGHT WAY):**
+  ✅ STEP 1: Search PAGE TEXT for any 6-character codes (like "AB12CD", "XYZ789")
+  ✅ STEP 2: If found in text → locate in screenshot → get coordinates → copy/type it
+  ✅ STEP 3: If not in text → search ACCESSIBILITY TREE for text/button elements
+  ✅ Result: Found code in 1 iteration! Enter it → Next level!
 
-**MANDATORY WORKFLOW:**
-1. FIRST: Search the accessibility tree for what you need
-   - Looking for a code? Search tree for text nodes with 6-char codes
-   - Looking for a button? Search tree for button with that name
-   - Looking for an input? Search tree for textbox elements
+**MANDATORY WORKFLOW FOR ANY TASK:**
 
-2. SECOND: Use screenshot ONLY for coordinates
-   - After finding element in tree, look at screenshot
-   - Find its visual position, get [x, y] coordinates
-   - Click at those coordinates
+1. **FIRST: Search PAGE TEXT** (provided below after accessibility tree)
+   - All visible text is extracted for you - no scrolling needed!
+   - Search for: codes, button labels, instructions, any text you need
+   - Example: Looking for "ABC123"? Just search the page text!
 
-**THE ACCESSIBILITY TREE:**
-- Shows EVERYTHING on the page, even if scrolled out of view
-- Contains all text content, button names, input fields
-- Reveals complete page structure and hierarchy
-- Is much faster than scrolling through screenshots
+2. **SECOND: Search ACCESSIBILITY TREE** (provided below)
+   - Tree shows structure: buttons, inputs, links, headings
+   - Find element roles and names
+   - Example: Find button with name="Submit" or textbox with name="code"
+
+3. **THIRD: Use SCREENSHOT for coordinates ONLY**
+   - After finding element in text/tree, look at screenshot
+   - Find its visual position, get [x, y] pixel coordinates
+   - Click, type, or interact at those coordinates
+
+**WHY THIS WORKS:**
+- PAGE TEXT = All text content already extracted (no scrolling!)
+- ACCESSIBILITY TREE = All interactive elements already found (no hunting!)
+- SCREENSHOT = Visual positioning only (efficient!)
 
 **NEVER DO THIS:**
 ❌ Scroll up and down looking for content
-❌ Click random buttons hoping to reveal content
-❌ Ignore the accessibility tree and only use screenshots
-❌ Scroll through 100 sections of filler content
+❌ Press Ctrl+F to search (you already have the text!)
+❌ Click random buttons hoping something appears
+❌ Ignore the page text and accessibility tree
+❌ Scroll through 100 sections of filler
+❌ Say "I need to scroll to find X" (X is already in the text!)
 
 **ALWAYS DO THIS:**
-✅ Read accessibility tree FIRST to find what you need
-✅ Use screenshot for coordinates only
-✅ Be efficient - find content in tree instantly
+✅ Search PAGE TEXT first for any text content
+✅ Search ACCESSIBILITY TREE second for structure/elements
+✅ Use SCREENSHOT third for coordinates
+✅ Be efficient - everything is already provided!
 
 ═══════════════════════════════════════════════════════════════
 """
@@ -267,14 +278,25 @@ You have access to powerful keyboard shortcuts for efficient navigation:
         # Build message content for Converse API format
         content = [{"text": prompt + autonomous_instructions + hybrid_guide + tool_usage_guide}]
 
-        # Add accessibility tree if available
+        # Add accessibility tree if available (FIRST - so AI reads it before image)
         if accessibility_tree and not accessibility_tree.get("error"):
             import json
-            tree_text = f"\n\n**Accessibility Tree:**\n```json\n{json.dumps(accessibility_tree, indent=2)}\n```"
+            tree_text = f"\n\n**Accessibility Tree (Page Structure):**\n```json\n{json.dumps(accessibility_tree, indent=2)}\n```\n"
             content.append({"text": tree_text})
 
+        # Add page text if available (SECOND - full text content)
+        if page_text:
+            # Truncate if too long to avoid token explosion
+            max_text_length = 10000  # ~2500 tokens
+            truncated_text = page_text[:max_text_length]
+            if len(page_text) > max_text_length:
+                truncated_text += f"\n\n[... text truncated, {len(page_text) - max_text_length} more characters ...]"
+
+            text_section = f"\n\n**Page Text (All Visible Text):**\n```\n{truncated_text}\n```\n"
+            content.append({"text": text_section})
+
         if screenshot:
-            # Decode base64 screenshot to bytes for Converse API
+            # Decode base64 screenshot to bytes for Converse API (LAST - visual reference)
             screenshot_bytes = base64.b64decode(screenshot)
             content.append({
                 "image": {
@@ -360,6 +382,7 @@ You have access to powerful keyboard shortcuts for efficient navigation:
         self,
         screenshot: str,
         accessibility_tree: Optional[dict] = None,
+        page_text: Optional[str] = None,
         action_result: Optional[Dict[str, Any]] = None,
         display_width: int = 1024,
         display_height: int = 768
@@ -385,16 +408,27 @@ You have access to powerful keyboard shortcuts for efficient navigation:
 
             # Format tool result based on tool type
             if tool_name == "computer":
-                # Return accessibility tree and screenshot
+                # Return accessibility tree, page text, and screenshot
                 result_content = []
 
                 # Add accessibility tree first (so it's read before image)
                 if accessibility_tree and not accessibility_tree.get("error"):
                     import json
-                    tree_text = f"**Updated Accessibility Tree:**\n```json\n{json.dumps(accessibility_tree, indent=2)}\n```"
+                    tree_text = f"**Updated Accessibility Tree:**\n```json\n{json.dumps(accessibility_tree, indent=2)}\n```\n"
                     result_content.append({"text": tree_text})
 
-                # Return screenshot as image
+                # Add page text second (full text content)
+                if page_text:
+                    # Truncate if too long
+                    max_text_length = 10000  # ~2500 tokens
+                    truncated_text = page_text[:max_text_length]
+                    if len(page_text) > max_text_length:
+                        truncated_text += f"\n\n[... text truncated, {len(page_text) - max_text_length} more characters ...]"
+
+                    text_section = f"**Updated Page Text:**\n```\n{truncated_text}\n```\n"
+                    result_content.append({"text": text_section})
+
+                # Return screenshot as image (last - for visual reference)
                 screenshot_bytes = base64.b64decode(screenshot)
                 result_content.append({
                     "image": {

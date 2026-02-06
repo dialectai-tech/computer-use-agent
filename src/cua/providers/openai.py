@@ -26,6 +26,7 @@ class OpenAIProvider(ComputerUseProvider):
         prompt: str,
         screenshot: Optional[str] = None,
         accessibility_tree: Optional[dict] = None,
+        page_text: Optional[str] = None,
         display_width: int = 1024,
         display_height: int = 768
     ) -> Any:
@@ -134,6 +135,7 @@ Use these instead of multiple scroll actions!"""
         self,
         screenshot: str,
         accessibility_tree: Optional[dict] = None,
+        page_text: Optional[str] = None,
         action_result: Optional[Dict[str, Any]] = None,
         display_width: int = 1024,
         display_height: int = 768

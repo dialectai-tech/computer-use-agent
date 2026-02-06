@@ -141,10 +141,14 @@ class ComputerUseAgent:
             if self.use_accessibility_tree:
                 accessibility_tree = self.browser.get_accessibility_tree()
 
+            # Get page text for searching/analysis
+            page_text = self.browser.get_page_text()
+
             # Track initial screenshot
             self.screenshot_history.append({
                 "screenshot": screenshot,
                 "accessibility_tree": accessibility_tree,
+                "page_text": page_text,
                 "action_type": "initial",
                 "transient": False,
                 "important_info": None
@@ -158,6 +162,7 @@ class ComputerUseAgent:
                 prompt=prompt,
                 screenshot=screenshot,
                 accessibility_tree=accessibility_tree,
+                page_text=page_text,
                 display_width=self.display_width,
                 display_height=self.display_height
             )
@@ -221,6 +226,9 @@ class ComputerUseAgent:
                 if self.use_accessibility_tree:
                     accessibility_tree = self.browser.get_accessibility_tree()
 
+                # Get page text for searching/analysis
+                page_text = self.browser.get_page_text()
+
                 # Get response text and extract memory signals
                 response_text = self.provider.get_response_text(response)
                 memory_signals = self._extract_memory_signals(response_text)
@@ -238,6 +246,7 @@ class ComputerUseAgent:
                 self.screenshot_history.append({
                     "screenshot": screenshot,
                     "accessibility_tree": accessibility_tree,
+                    "page_text": page_text,
                     "action_type": actions[0].type.value if actions else "unknown",
                     "transient": is_transient,
                     "important_info": memory_signals["important_info"]
@@ -254,6 +263,7 @@ class ComputerUseAgent:
                 response = self.provider.create_continuation_request(
                     screenshot=screenshot,
                     accessibility_tree=accessibility_tree,
+                    page_text=page_text,
                     display_width=self.display_width,
                     display_height=self.display_height
                 )
