@@ -44,23 +44,28 @@ class ClaudeProvider(ComputerUseProvider):
         content = [{"type": "text", "text": prompt}]
 
         if screenshot:
-            content.append({
+            screenshot_block = {
                 "type": "image",
                 "source": {
                     "type": "base64",
                     "media_type": "image/png",
                     "data": screenshot
                 }
-            })
+            }
+
+            # Add cache control to screenshot if caching is enabled
+            if self.enable_caching:
+                screenshot_block["cache_control"] = {"type": "ephemeral"}
+
+            content.append(screenshot_block)
 
         self.messages = [{"role": "user", "content": content}]
 
-        # Create request with computer use tool
-        start_time = time.time()
-        response = self.client.beta.messages.create(
-            model=self.model,
-            max_tokens=2048,
-            tools=[
+        # Build request parameters
+        request_params = {
+            "model": self.model,
+            "max_tokens": 4096 if self.extended_thinking else 2048,
+            "tools": [
                 {
                     "type": "computer_20250124",
                     "name": "computer",
@@ -73,9 +78,20 @@ class ClaudeProvider(ComputerUseProvider):
                     "name": "bash"
                 }
             ],
-            messages=self.messages,
-            betas=["computer-use-2025-01-24"]
-        )
+            "messages": self.messages,
+            "betas": ["computer-use-2025-01-24"]
+        }
+
+        # Add extended thinking if enabled
+        if self.extended_thinking:
+            request_params["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": self.thinking_budget
+            }
+
+        # Create request with computer use tool
+        start_time = time.time()
+        response = self.client.beta.messages.create(**request_params)
         api_time = time.time() - start_time
 
         # Track stats
@@ -85,6 +101,12 @@ class ClaudeProvider(ComputerUseProvider):
                 input_tokens=response.usage.input_tokens,
                 output_tokens=response.usage.output_tokens
             )
+
+            # Track cache stats if available
+            if hasattr(response.usage, 'cache_creation_input_tokens'):
+                self.stats.cache_creation_tokens += response.usage.cache_creation_input_tokens
+            if hasattr(response.usage, 'cache_read_input_tokens'):
+                self.stats.cache_read_tokens += response.usage.cache_read_input_tokens
 
         self.last_response = response
         # Add assistant response to conversation
@@ -140,18 +162,32 @@ class ClaudeProvider(ComputerUseProvider):
 
                     tool_results.append(tool_result)
 
+        # Add cache control to last tool result if caching is enabled
+        if self.enable_caching and tool_results:
+            # Add cache_control to the last tool result's content
+            last_result = tool_results[-1]
+            if isinstance(last_result.get("content"), list):
+                # Image content
+                last_result["content"][-1]["cache_control"] = {"type": "ephemeral"}
+            elif isinstance(last_result.get("content"), str):
+                # Text content - need to convert to list format
+                last_result["content"] = [{
+                    "type": "text",
+                    "text": last_result["content"],
+                    "cache_control": {"type": "ephemeral"}
+                }]
+
         # Add tool results to conversation
         self.messages.append({
             "role": "user",
             "content": tool_results
         })
 
-        # Create continuation request
-        start_time = time.time()
-        response = self.client.beta.messages.create(
-            model=self.model,
-            max_tokens=2048,
-            tools=[
+        # Build request parameters
+        request_params = {
+            "model": self.model,
+            "max_tokens": 4096 if self.extended_thinking else 2048,
+            "tools": [
                 {
                     "type": "computer_20250124",
                     "name": "computer",
@@ -164,9 +200,20 @@ class ClaudeProvider(ComputerUseProvider):
                     "name": "bash"
                 }
             ],
-            messages=self.messages,
-            betas=["computer-use-2025-01-24"]
-        )
+            "messages": self.messages,
+            "betas": ["computer-use-2025-01-24"]
+        }
+
+        # Add extended thinking if enabled
+        if self.extended_thinking:
+            request_params["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": self.thinking_budget
+            }
+
+        # Create continuation request
+        start_time = time.time()
+        response = self.client.beta.messages.create(**request_params)
         api_time = time.time() - start_time
 
         # Track stats
@@ -176,6 +223,12 @@ class ClaudeProvider(ComputerUseProvider):
                 input_tokens=response.usage.input_tokens,
                 output_tokens=response.usage.output_tokens
             )
+
+            # Track cache stats if available
+            if hasattr(response.usage, 'cache_creation_input_tokens'):
+                self.stats.cache_creation_tokens += response.usage.cache_creation_input_tokens
+            if hasattr(response.usage, 'cache_read_input_tokens'):
+                self.stats.cache_read_tokens += response.usage.cache_read_input_tokens
 
         self.last_response = response
         # Add assistant response to conversation

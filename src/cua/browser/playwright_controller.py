@@ -16,8 +16,9 @@ class PlaywrightController:
 
     def __init__(
         self,
-        display_width: int = 1280,
-        display_height: int = 720,
+        display_width: int = 1024,
+        display_height: int = 768,
+        zoom: int = 85,
         headless: bool = True,
         record_video: bool = False,
         video_dir: Optional[str] = None
@@ -27,12 +28,14 @@ class PlaywrightController:
         Args:
             display_width: Browser viewport width
             display_height: Browser viewport height
+            zoom: Browser zoom level as percentage (default: 85)
             headless: Whether to run browser in headless mode
             record_video: Whether to record video of the session
             video_dir: Directory to save videos (default: ./recordings)
         """
         self.display_width = display_width
         self.display_height = display_height
+        self.zoom = zoom
         self.headless = headless
         self.record_video = record_video
         self.video_dir = video_dir or "./recordings"
@@ -117,8 +120,24 @@ class PlaywrightController:
         if not self.page:
             raise RuntimeError("Browser not started. Call start() first.")
         self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
+
+        # Set zoom level if not 100%
+        if self.zoom != 100:
+            self._set_zoom()
+
         # Wait a bit for page to stabilize
         time.sleep(1)
+
+    def _set_zoom(self):
+        """Set the browser zoom level."""
+        if not self.page:
+            return
+
+        # Use CSS zoom to adjust page scale
+        zoom_factor = self.zoom / 100.0
+        self.page.evaluate(f"""
+            document.body.style.zoom = '{zoom_factor}';
+        """)
 
     def take_screenshot(self) -> str:
         """Take screenshot of current page.

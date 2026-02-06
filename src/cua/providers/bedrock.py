@@ -201,6 +201,16 @@ class BedrockProvider(ComputerUseProvider):
             "tools": tools_config
         }
 
+        # Build inference config with extended thinking if enabled
+        inference_config = {"maxTokens": 4096}
+
+        # Add extended thinking configuration if enabled
+        if self.extended_thinking:
+            additional_fields["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": self.thinking_budget
+            }
+
         # Call Bedrock Converse API
         # For initial request, tools are ONLY in additionalModelRequestFields
         # toolConfig is not needed for initial request
@@ -208,7 +218,7 @@ class BedrockProvider(ComputerUseProvider):
         response = self.client.converse(
             modelId=self.model_id,
             messages=self.messages,
-            inferenceConfig={"maxTokens": 4096},
+            inferenceConfig=inference_config,
             additionalModelRequestFields=additional_fields
         )
         api_time = time.time() - start_time
@@ -315,6 +325,13 @@ class BedrockProvider(ComputerUseProvider):
             "anthropic_beta": [beta_version]
         }
 
+        # Add extended thinking configuration if enabled
+        if self.extended_thinking:
+            additional_fields_continuation["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": self.thinking_budget
+            }
+
         # Build toolConfig for continuation (required when using tool results)
         # Wrap each tool as a toolSpec with minimal valid input schema
         bedrock_tool_config = {
@@ -334,6 +351,9 @@ class BedrockProvider(ComputerUseProvider):
             ]
         }
 
+        # Build inference config
+        inference_config = {"maxTokens": 4096}
+
         # Call Converse API with continuation
         # NOTE: Tools are defined in BOTH places but this appears to be required:
         # - toolConfig: References tools by name (Bedrock requirement for tool results)
@@ -342,7 +362,7 @@ class BedrockProvider(ComputerUseProvider):
         response = self.client.converse(
             modelId=self.model_id,
             messages=self.messages,
-            inferenceConfig={"maxTokens": 4096},
+            inferenceConfig=inference_config,
             toolConfig=bedrock_tool_config,
             additionalModelRequestFields=additional_fields_continuation
         )

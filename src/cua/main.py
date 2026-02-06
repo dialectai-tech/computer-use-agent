@@ -48,14 +48,20 @@ console = Console()
 @click.option(
     "--display-width",
     type=int,
-    default=lambda: int(os.getenv("DISPLAY_WIDTH", "1280")),
-    help="Display width in pixels (default: 1280)"
+    default=lambda: int(os.getenv("DISPLAY_WIDTH", "1024")),
+    help="Display width in pixels (default: 1024)"
 )
 @click.option(
     "--display-height",
     type=int,
-    default=lambda: int(os.getenv("DISPLAY_HEIGHT", "720")),
-    help="Display height in pixels (default: 720)"
+    default=lambda: int(os.getenv("DISPLAY_HEIGHT", "768")),
+    help="Display height in pixels (default: 768)"
+)
+@click.option(
+    "--zoom",
+    type=int,
+    default=lambda: int(os.getenv("BROWSER_ZOOM", "85")),
+    help="Browser zoom level in percent (default: 85)"
 )
 @click.option(
     "--headless/--no-headless",
@@ -72,6 +78,28 @@ console = Console()
     default="./recordings",
     help="Directory to save video recordings (default: ./recordings)"
 )
+@click.option(
+    "--enable-caching/--disable-caching",
+    default=True,
+    help="Enable prompt caching for cost savings (default: enabled)"
+)
+@click.option(
+    "--context-window-size",
+    type=int,
+    default=lambda: int(os.getenv("CONTEXT_WINDOW_SIZE", "10")),
+    help="Number of recent screenshots to keep in context (default: 10)"
+)
+@click.option(
+    "--extended-thinking/--no-extended-thinking",
+    default=False,
+    help="Enable extended thinking for complex reasoning (default: disabled)"
+)
+@click.option(
+    "--thinking-budget",
+    type=int,
+    default=lambda: int(os.getenv("THINKING_BUDGET", "10000")),
+    help="Token budget for extended thinking (default: 10000)"
+)
 def cli(
     url: str,
     prompt: str,
@@ -80,9 +108,14 @@ def cli(
     max_iterations: int,
     display_width: int,
     display_height: int,
+    zoom: int,
     headless: bool,
     record_video: bool,
-    video_dir: str
+    video_dir: str,
+    enable_caching: bool,
+    context_window_size: int,
+    extended_thinking: bool,
+    thinking_budget: int
 ):
     """Computer Use Automation - Multi-provider AI agent for browser automation.
 
@@ -169,9 +202,14 @@ def cli(
         provider=ai_provider,
         display_width=display_width,
         display_height=display_height,
+        zoom=zoom,
         headless=headless,
         record_video=record_video,
-        video_dir=video_dir
+        video_dir=video_dir,
+        enable_caching=enable_caching,
+        context_window_size=context_window_size,
+        extended_thinking=extended_thinking,
+        thinking_budget=thinking_budget
     )
 
     # Run task
@@ -200,6 +238,20 @@ def cli(
         console.print(f"Input Tokens: {result.stats['input_tokens']:,}")
         console.print(f"Output Tokens: {result.stats['output_tokens']:,}")
         console.print(f"Total Tokens: {result.stats['total_tokens']:,}")
+
+        # Display cache stats if available
+        if result.stats.get('cache_creation_tokens', 0) > 0 or result.stats.get('cache_read_tokens', 0) > 0:
+            console.print(f"Cache Creation: {result.stats.get('cache_creation_tokens', 0):,} tokens")
+            console.print(f"Cache Reads: {result.stats.get('cache_read_tokens', 0):,} tokens")
+
+            # Calculate savings
+            cache_read = result.stats.get('cache_read_tokens', 0)
+            if cache_read > 0:
+                # Cache reads are 90% cheaper (0.1x cost vs 1x)
+                # So savings = cache_read * 0.9
+                savings_pct = (cache_read / result.stats['input_tokens']) * 90 if result.stats['input_tokens'] > 0 else 0
+                console.print(f"[green]Cache Savings: ~{savings_pct:.1f}% on input tokens[/green]")
+
         console.print(f"Screenshots: {result.stats['screenshots_taken']}")
         console.print(f"Actions: {result.stats['actions_executed']}")
         console.print(f"Avg API Time: {result.stats['avg_api_time']:.2f}s")

@@ -28,11 +28,16 @@ class ComputerUseAgent:
     def __init__(
         self,
         provider: ComputerUseProvider,
-        display_width: int = 1280,
-        display_height: int = 720,
+        display_width: int = 1024,
+        display_height: int = 768,
+        zoom: int = 85,
         headless: bool = True,
         record_video: bool = False,
-        video_dir: Optional[str] = None
+        video_dir: Optional[str] = None,
+        enable_caching: bool = True,
+        context_window_size: int = 10,
+        extended_thinking: bool = False,
+        thinking_budget: int = 10000
     ):
         """Initialize agent.
 
@@ -40,18 +45,37 @@ class ComputerUseAgent:
             provider: AI provider to use
             display_width: Browser viewport width
             display_height: Browser viewport height
+            zoom: Browser zoom level as percentage
             headless: Whether to run browser in headless mode
             record_video: Whether to record video of the session
             video_dir: Directory to save videos
+            enable_caching: Enable prompt caching for cost savings
+            context_window_size: Number of recent screenshots to keep
+            extended_thinking: Enable extended thinking for complex reasoning
+            thinking_budget: Token budget for extended thinking
         """
         self.provider = provider
         self.display_width = display_width
         self.display_height = display_height
+        self.zoom = zoom
         self.headless = headless
         self.record_video = record_video
         self.video_dir = video_dir
+        self.enable_caching = enable_caching
+        self.context_window_size = context_window_size
+        self.extended_thinking = extended_thinking
+        self.thinking_budget = thinking_budget
         self.console = Console()
         self.browser: Optional[PlaywrightController] = None
+
+        # Context management: track screenshots and actions for hybrid approach
+        self.screenshot_history = []  # List of (screenshot, action_type, important_info)
+        self.important_context = []  # List of important information to remember
+
+        # Pass configuration to provider
+        self.provider.enable_caching = enable_caching
+        self.provider.extended_thinking = extended_thinking
+        self.provider.thinking_budget = thinking_budget
 
     def run_task(
         self,
@@ -82,9 +106,17 @@ class ComputerUseAgent:
             self.console.print("[yellow]Starting browser...[/yellow]")
             if self.record_video:
                 self.console.print("[yellow]Video recording enabled[/yellow]")
+            if self.zoom != 100:
+                self.console.print(f"[yellow]Zoom level: {self.zoom}%[/yellow]")
+            if self.enable_caching:
+                self.console.print("[yellow]Prompt caching: enabled[/yellow]")
+            if self.extended_thinking:
+                self.console.print(f"[yellow]Extended thinking: enabled (budget: {self.thinking_budget})[/yellow]")
+
             self.browser = PlaywrightController(
                 display_width=self.display_width,
                 display_height=self.display_height,
+                zoom=self.zoom,
                 headless=self.headless,
                 record_video=self.record_video,
                 video_dir=self.video_dir
@@ -98,6 +130,14 @@ class ComputerUseAgent:
             # Take initial screenshot
             screenshot = self.browser.take_screenshot()
             self.provider.stats.add_screenshot()
+
+            # Track initial screenshot
+            self.screenshot_history.append({
+                "screenshot": screenshot,
+                "action_type": "initial",
+                "transient": False,
+                "important_info": None
+            })
 
             # Create initial request
             self.console.print(f"[yellow]Sending task to AI...[/yellow]")
@@ -142,9 +182,16 @@ class ComputerUseAgent:
                     self.console.print("[yellow]No actions found, task may be complete[/yellow]")
                     break
 
+                # Track if any actions were transient
+                last_action_transient = False
                 for action in actions:
                     action_desc = self._format_action(action)
                     self.console.print(f"  → {action_desc}")
+
+                    # Check if action is transient
+                    is_transient = self._is_transient_action(action)
+                    if is_transient:
+                        last_action_transient = True
 
                     # Execute action
                     result = self.browser.execute_action(action)
@@ -157,12 +204,35 @@ class ComputerUseAgent:
                 screenshot = self.browser.take_screenshot()
                 self.provider.stats.add_screenshot()
 
-                # Get response text
+                # Get response text and extract memory signals
                 response_text = self.provider.get_response_text(response)
+                memory_signals = self._extract_memory_signals(response_text)
+
                 if response_text:
                     self.console.print(f"  [dim]{response_text}[/dim]")
 
-                # Continue conversation
+                # Track important information
+                if memory_signals["important_info"]:
+                    self.important_context.append(memory_signals["important_info"])
+                    self.console.print(f"  [cyan]📝 Remembered: {memory_signals['important_info'][:50]}...[/cyan]")
+
+                # Add screenshot to history with metadata
+                is_transient = memory_signals["transient"] or last_action_transient
+                self.screenshot_history.append({
+                    "screenshot": screenshot,
+                    "action_type": actions[0].type.value if actions else "unknown",
+                    "transient": is_transient,
+                    "important_info": memory_signals["important_info"]
+                })
+
+                # Manage context window (prune old screenshots)
+                self._manage_context_window()
+
+                # Log context stats
+                non_transient_count = sum(1 for item in self.screenshot_history if not item.get("transient", False))
+                self.console.print(f"  [dim]Context: {len(self.screenshot_history)} screenshots ({non_transient_count} important)[/dim]")
+
+                # Continue conversation (only with recent screenshots in context)
                 response = self.provider.create_continuation_request(
                     screenshot=screenshot,
                     display_width=self.display_width,
@@ -206,6 +276,99 @@ class ComputerUseAgent:
             if self.browser:
                 self.console.print("\n[yellow]Stopping browser...[/yellow]")
                 self.browser.stop()
+
+    def _is_transient_action(self, action) -> bool:
+        """Determine if an action is transient (can be forgotten).
+
+        Args:
+            action: Action to check
+
+        Returns:
+            True if action is transient
+        """
+        # Actions that don't produce important info
+        transient_actions = {
+            "mouse_move",
+            "scroll",
+            "wait"
+        }
+
+        action_type = action.type.value
+
+        # Check if it's a popup/modal close action (heuristic)
+        if action_type == "click":
+            # If clicking on common close button locations (top-right corner area)
+            x = action.params.get("x", action.params.get("coordinate", [0, 0])[0])
+            y = action.params.get("y", action.params.get("coordinate", [0, 0])[1])
+
+            # Heuristic: top-right 20% of screen is often close buttons
+            if x > self.display_width * 0.8 and y < self.display_height * 0.2:
+                return True
+
+        return action_type in transient_actions
+
+    def _extract_memory_signals(self, text: str) -> dict:
+        """Extract memory management signals from response text.
+
+        Args:
+            text: Response text from AI
+
+        Returns:
+            Dict with 'transient' (bool) and 'important_info' (str or None)
+        """
+        if not text:
+            return {"transient": False, "important_info": None}
+
+        text_lower = text.lower()
+
+        # Check for explicit transient signal
+        is_transient = "transient" in text_lower
+
+        # Check for remember signal
+        important_info = None
+        if "remember:" in text_lower:
+            # Extract text after "REMEMBER:"
+            parts = text.split("REMEMBER:", 1)
+            if len(parts) > 1:
+                # Get the important info (up to next sentence or 200 chars)
+                info = parts[1].strip()
+                important_info = info[:200].split("\n")[0]
+
+        return {
+            "transient": is_transient,
+            "important_info": important_info
+        }
+
+    def _manage_context_window(self):
+        """Manage the context window by pruning old screenshots.
+
+        This implements the hybrid approach:
+        1. Keep only last N screenshots (context_window_size)
+        2. Prioritize keeping screenshots with important info
+        3. Always discard transient action screenshots
+        """
+        if len(self.screenshot_history) <= self.context_window_size:
+            return
+
+        # Separate into transient and non-transient
+        non_transient = []
+        transient = []
+
+        for item in self.screenshot_history:
+            if item.get("transient", False):
+                transient.append(item)
+            else:
+                non_transient.append(item)
+
+        # Keep the most recent non-transient items up to window size
+        # Always discard transient items beyond the window
+        if len(non_transient) > self.context_window_size:
+            # Keep most recent N non-transient items
+            self.screenshot_history = non_transient[-self.context_window_size:]
+        else:
+            # Keep all non-transient + fill with recent transient if needed
+            remaining = self.context_window_size - len(non_transient)
+            self.screenshot_history = non_transient + transient[-remaining:] if remaining > 0 else non_transient
 
     def _format_action(self, action) -> str:
         """Format action for display.

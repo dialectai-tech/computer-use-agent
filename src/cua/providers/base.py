@@ -41,6 +41,8 @@ class ProviderStats:
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cache_read_tokens: int = 0
     screenshots_taken: int = 0
     actions_executed: int = 0
     total_api_time: float = 0.0
@@ -88,7 +90,7 @@ class ProviderStats:
         Returns:
             Dictionary representation of stats
         """
-        return {
+        result = {
             "api_calls": self.api_calls,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
@@ -98,6 +100,13 @@ class ProviderStats:
             "total_api_time": self.total_api_time,
             "avg_api_time": self.avg_api_time,
         }
+
+        # Add cache stats if available
+        if self.cache_creation_tokens > 0 or self.cache_read_tokens > 0:
+            result["cache_creation_tokens"] = self.cache_creation_tokens
+            result["cache_read_tokens"] = self.cache_read_tokens
+
+        return result
 
 
 class ComputerUseProvider(ABC):
@@ -114,6 +123,11 @@ class ComputerUseProvider(ABC):
         self.model = model
         self.conversation_history = []
         self.stats = ProviderStats()
+
+        # Configuration flags (set by agent)
+        self.enable_caching = True
+        self.extended_thinking = False
+        self.thinking_budget = 10000
 
     @abstractmethod
     def create_initial_request(
