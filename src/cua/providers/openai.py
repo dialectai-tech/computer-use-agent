@@ -52,7 +52,16 @@ Click actions MUST include coordinates: {"action": "click", "x": 640, "y": 480}
 Look at screenshot to find element position.
 
 **SCROLLING IN MODALS/DIALOGS:**
-To scroll within a modal or dialog: Position coordinates INSIDE the modal area, then use scroll action. The system will scroll the modal container at that position. Take a screenshot after to verify."""
+To scroll within a modal or dialog: Position coordinates INSIDE the modal area, then use scroll action. The system will scroll the modal container at that position. Take a screenshot after to verify.
+
+**KEYBOARD SHORTCUTS:**
+Use keyboard shortcuts for efficient navigation:
+- Space - Scroll down one page (fast scanning)
+- Home/Ctrl+Home - Jump to top instantly
+- End/Ctrl+End - Jump to bottom instantly
+- PageDown/PageUp - Scroll by page
+
+Use these instead of multiple scroll actions!
 
         # Build hybrid guide if accessibility tree is available
         hybrid_guide = ""
@@ -61,16 +70,20 @@ To scroll within a modal or dialog: Position coordinates INSIDE the modal area, 
 
 HYBRID MODE: You have BOTH screenshot and accessibility tree.
 
-**How to use them:**
-1. **Accessibility Tree** - IDENTIFY what element you need (role, name, state)
-2. **Screenshot** - LOCATE where it is visually and GET COORDINATES
+**CRITICAL: ALWAYS START WITH THE ACCESSIBILITY TREE!**
 
-**CRITICAL:** Tree does NOT have coordinates. You MUST use screenshot for click positions.
+**MANDATORY WORKFLOW:**
+1. **FIRST: Read accessibility tree** - Find ALL elements, text content, page structure
+   - Tree shows everything, even content scrolled out of view
+   - Look for codes, buttons, inputs in the tree FIRST
+2. **SECOND: Use screenshot** - Get visual coordinates only after identifying element in tree
 
-**Workflow:**
-1. Read tree to identify element (e.g., role="button" name="Submit")
-2. Look at screenshot to find that button visually
-3. Click at coordinates where you see it in the screenshot
+**Example - Finding a code:**
+- Check tree for text nodes with 6-character codes
+- Tree shows: {"role": "text", "name": "Code: ABC123"}
+- You KNOW the code without scrolling!
+
+**DON'T scroll blindly - use the tree to find content first!**
 """
 
         # Build initial input content

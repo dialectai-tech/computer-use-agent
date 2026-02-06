@@ -62,7 +62,23 @@ When you need to scroll within a modal, dialog, or any scrollable container:
 3. The system will automatically find and scroll the scrollable container at that position
 4. Take a screenshot after scrolling to verify the modal content scrolled
 
-Example: If a modal is centered at x=500, y=300, use {"action": "scroll", "coordinate": [500, 300]}"""
+Example: If a modal is centered at x=500, y=300, use {"action": "scroll", "coordinate": [500, 300]}
+
+**KEYBOARD SHORTCUTS AND NAVIGATION:**
+You have access to powerful keyboard shortcuts for efficient navigation:
+- **Space** - Scroll down one page viewport (fastest way to scan through content)
+- **Shift+Space** - Scroll up one page viewport
+- **Home** - Jump to top of page/element instantly
+- **End** - Jump to bottom of page/element instantly
+- **Ctrl+Home** - Jump to absolute beginning of page
+- **Ctrl+End** - Jump to absolute end of page
+- **PageDown** - Scroll down one page
+- **PageUp** - Scroll up one page
+
+**Use these shortcuts instead of multiple scroll actions!** For example:
+- To scan a long page: Press Space repeatedly instead of scrolling
+- To quickly return to top: Use Home or Ctrl+Home instead of scrolling up many times
+- To jump to bottom: Use End or Ctrl+End instead of scrolling down many times"""
 
         # Build hybrid approach guide
         hybrid_guide = ""
@@ -71,29 +87,41 @@ Example: If a modal is centered at x=500, y=300, use {"action": "scroll", "coord
 
 HYBRID MODE: You have access to BOTH screenshot and accessibility tree.
 
-**CRITICAL: How to use them together:**
-1. **Accessibility Tree** - Use this to IDENTIFY what element you need
-   - Shows semantic structure: roles (button, input, link), names, states (checked, disabled)
-   - Reveals ALL elements even if scrolled out of view in screenshot
-   - Shows hierarchy (what's inside modals, forms, scrollable containers)
-   - Example: `{"role": "button", "name": "Submit & Continue"}`
+**CRITICAL: ALWAYS START WITH THE ACCESSIBILITY TREE!**
 
-2. **Screenshot** - Use this to LOCATE where the element is and GET COORDINATES
-   - The accessibility tree does NOT contain pixel coordinates
-   - You MUST look at the screenshot to find visual positions
-   - Match element names from tree to visual elements in screenshot
+**MANDATORY WORKFLOW (DO THIS EVERY TIME):**
+1. **FIRST: Read the accessibility tree** to understand what's on the page
+   - Find all available elements by role (button, link, textbox, etc.)
+   - Identify element names, text content, and states
+   - See the complete page structure, including content scrolled out of view
+   - Look for the information you need (codes, buttons, inputs, etc.)
 
-**Workflow:**
-1. Read accessibility tree to understand available elements and page structure
-2. Identify which element you need (by role and name from tree)
-3. Look at screenshot to visually locate that specific element
-4. Use the element's visual position in screenshot for click coordinates
+2. **SECOND: Use the screenshot** to find visual coordinates
+   - After identifying the target element in the tree, look at the screenshot
+   - Find the element's visual position in the screenshot
+   - Get the [x, y] pixel coordinates from the screenshot
 
-**Example:**
-- Tree: `{"role": "button", "name": "Dismiss"}` ← Know WHAT to click
-- Screenshot: Look for button labeled "Dismiss" ← Know WHERE to click
-- Click at the coordinates where "Dismiss" button appears in screenshot
-"""
+**Why this matters:**
+- The accessibility tree shows ALL page content, even if scrolled out of view
+- It reveals text content, element names, and semantic structure
+- It's much more efficient than scrolling around blindly
+- The screenshot is only needed for coordinates, not for finding content
+
+**Example - Finding a code:**
+1. Check accessibility tree for text nodes containing 6-character codes
+2. Tree might show: `{"role": "text", "name": "Code: ABC123"}`
+3. You now KNOW the code is ABC123 without needing to scroll around!
+4. Use screenshot only if you need to click something
+
+**Example - Finding a button:**
+1. Tree shows: `{"role": "button", "name": "Submit & Continue"}`
+2. Look at screenshot to find that button visually
+3. Click at the coordinates where you see "Submit & Continue" button
+
+**DON'T:**
+- Don't scroll around aimlessly looking for content
+- Don't rely only on screenshots
+- Don't ignore the accessibility tree"""
 
         content = [{"type": "text", "text": prompt + autonomous_instructions + hybrid_guide}]
 

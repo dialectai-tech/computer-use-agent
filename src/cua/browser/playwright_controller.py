@@ -277,8 +277,42 @@ class PlaywrightController:
                 # Handle both Claude's "key" and OpenAI's "keypress"
                 if "text" in action.params:
                     # Claude format: key with text
-                    key = action.params["text"]
-                    self.page.keyboard.press(self._map_key(key))
+                    key_text = action.params["text"]
+
+                    # Handle keyboard shortcuts (Ctrl+Home, Ctrl+End, etc.)
+                    if "+" in key_text:
+                        # Parse key combination (e.g., "Control+Home", "ctrl+a")
+                        parts = [p.strip().lower() for p in key_text.split("+")]
+                        modifiers = []
+                        main_key = parts[-1]
+
+                        for part in parts[:-1]:
+                            if part in ["ctrl", "control"]:
+                                modifiers.append("Control")
+                            elif part in ["shift"]:
+                                modifiers.append("Shift")
+                            elif part in ["alt"]:
+                                modifiers.append("Alt")
+                            elif part in ["meta", "cmd", "command"]:
+                                modifiers.append("Meta")
+
+                        # Map the main key
+                        main_key = self._map_key(main_key)
+
+                        # Press modifiers down
+                        for mod in modifiers:
+                            self.page.keyboard.down(mod)
+
+                        # Press main key
+                        self.page.keyboard.press(main_key)
+
+                        # Release modifiers
+                        for mod in reversed(modifiers):
+                            self.page.keyboard.up(mod)
+                    else:
+                        # Single key press
+                        self.page.keyboard.press(self._map_key(key_text))
+
                 elif "keys" in action.params:
                     # OpenAI format: keypress with keys array
                     for key in action.params["keys"]:
@@ -435,29 +469,53 @@ class PlaywrightController:
         Returns:
             Playwright key name
         """
-        # Common key mappings
+        # Normalize key to lowercase for case-insensitive matching
+        key_lower = key.lower()
+
+        # Common key mappings (case-insensitive)
         key_map = {
-            "Return": "Enter",
-            "ENTER": "Enter",
-            "Enter": "Enter",
-            "Space": " ",
-            "SPACE": " ",
-            "Tab": "Tab",
-            "TAB": "Tab",
-            "Backspace": "Backspace",
-            "Delete": "Delete",
-            "Escape": "Escape",
-            "ESC": "Escape",
-            "ArrowUp": "ArrowUp",
-            "ArrowDown": "ArrowDown",
-            "ArrowLeft": "ArrowLeft",
-            "ArrowRight": "ArrowRight",
-            "PageDown": "PageDown",
-            "Page_Down": "PageDown",
-            "PageUp": "PageUp",
-            "Page_Up": "PageUp",
-            "Home": "Home",
-            "End": "End",
+            "return": "Enter",
+            "enter": "Enter",
+            "space": " ",
+            " ": " ",
+            "tab": "Tab",
+            "backspace": "Backspace",
+            "delete": "Delete",
+            "escape": "Escape",
+            "esc": "Escape",
+            "arrowup": "ArrowUp",
+            "arrowdown": "ArrowDown",
+            "arrowleft": "ArrowLeft",
+            "arrowright": "ArrowRight",
+            "pagedown": "PageDown",
+            "page_down": "PageDown",
+            "pageup": "PageUp",
+            "page_up": "PageUp",
+            "home": "Home",
+            "end": "End",
+            "insert": "Insert",
+            "f1": "F1",
+            "f2": "F2",
+            "f3": "F3",
+            "f4": "F4",
+            "f5": "F5",
+            "f6": "F6",
+            "f7": "F7",
+            "f8": "F8",
+            "f9": "F9",
+            "f10": "F10",
+            "f11": "F11",
+            "f12": "F12",
         }
 
-        return key_map.get(key, key)
+        # Try exact match first (preserves case for letters)
+        if key in key_map.values():
+            return key
+
+        # Try case-insensitive match
+        mapped = key_map.get(key_lower)
+        if mapped:
+            return mapped
+
+        # Return original key if no mapping found (for letters, numbers, etc.)
+        return key
