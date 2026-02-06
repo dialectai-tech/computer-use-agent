@@ -277,6 +277,19 @@ class ComputerUseAgent:
                 video_path=self.browser.get_video_path() if self.browser else None
             )
 
+        except KeyboardInterrupt:
+            self.console.print(f"\n[bold yellow]⚠ Interrupted by user (Ctrl+C)[/bold yellow]")
+
+            total_time = time.time() - start_time
+            return TaskResult(
+                success=False,
+                iterations=iteration,
+                total_time=total_time,
+                error="Interrupted by user",
+                stats=self.provider.stats.to_dict() if hasattr(self.provider, 'stats') else None,
+                video_path=self.browser.get_video_path() if self.browser else None
+            )
+
         except Exception as e:
             self.console.print(f"\n[bold red]✗ Error: {str(e)}[/bold red]")
 
@@ -291,10 +304,22 @@ class ComputerUseAgent:
             )
 
         finally:
-            # Clean up
+            # Clean up and save video
             if self.browser:
                 self.console.print("\n[yellow]Stopping browser...[/yellow]")
+
+                # Get video path before stopping (if recording)
+                video_path = None
+                if self.record_video:
+                    video_path = self.browser.get_video_path()
+                    if video_path:
+                        self.console.print(f"[yellow]Saving video recording...[/yellow]")
+
                 self.browser.stop()
+
+                # Print video path after stopping (video is finalized on stop)
+                if video_path:
+                    self.console.print(f"[green]✓ Video saved: {video_path}[/green]")
 
     def _is_transient_action(self, action) -> bool:
         """Determine if an action is transient (can be forgotten).

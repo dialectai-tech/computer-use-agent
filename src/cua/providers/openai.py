@@ -41,11 +41,43 @@ class OpenAIProvider(ComputerUseProvider):
         Returns:
             OpenAI API response
         """
-        # Build autonomous agent instructions
+        # Build autonomous agent instructions - START WITH ACCESSIBILITY TREE!
         autonomous_instructions = """
 
 **AUTONOMOUS AGENT MODE:**
-You are an AUTONOMOUS agent. Take actions, observe results via screenshots, and continue until complete. Do NOT ask the user for input. After each action, take a screenshot to see the result.
+You are an AUTONOMOUS agent. Take actions, observe results via screenshots, and continue until complete. Do NOT ask the user for input. After each action, take a screenshot to see the result."""
+
+        # CRITICAL: Put accessibility tree guide FIRST if available
+        hybrid_guide = ""
+        if accessibility_tree and not accessibility_tree.get("error"):
+            hybrid_guide = """
+
+═══════════════════════════════════════════════════════════════
+🚨 CRITICAL: YOU HAVE AN ACCESSIBILITY TREE - USE IT FIRST! 🚨
+═══════════════════════════════════════════════════════════════
+
+**STEP 1: READ THE ACCESSIBILITY TREE BELOW**
+The tree shows ALL page content instantly!
+
+**EXAMPLE - Finding a 6-character code:**
+❌ DON'T: Scroll 40 times looking for code
+✅ DO: Check tree, find {"role": "text", "name": "Code: ABC123"}, done!
+
+**MANDATORY WORKFLOW:**
+1. FIRST: Search accessibility tree for what you need
+2. SECOND: Use screenshot ONLY for coordinates
+
+**NEVER:**
+❌ Scroll aimlessly looking for content
+❌ Ignore the tree and only use screenshots
+
+**ALWAYS:**
+✅ Read tree FIRST to find content
+✅ Use screenshot for coordinates only
+═══════════════════════════════════════════════════════════════
+"""
+
+        tool_usage_guide = """
 
 **CRITICAL - Tool Usage:**
 Click actions MUST include coordinates: {"action": "click", "x": 640, "y": 480}
@@ -61,33 +93,10 @@ Use keyboard shortcuts for efficient navigation:
 - End/Ctrl+End - Jump to bottom instantly
 - PageDown/PageUp - Scroll by page
 
-Use these instead of multiple scroll actions!
-
-        # Build hybrid guide if accessibility tree is available
-        hybrid_guide = ""
-        if accessibility_tree and not accessibility_tree.get("error"):
-            hybrid_guide = """
-
-HYBRID MODE: You have BOTH screenshot and accessibility tree.
-
-**CRITICAL: ALWAYS START WITH THE ACCESSIBILITY TREE!**
-
-**MANDATORY WORKFLOW:**
-1. **FIRST: Read accessibility tree** - Find ALL elements, text content, page structure
-   - Tree shows everything, even content scrolled out of view
-   - Look for codes, buttons, inputs in the tree FIRST
-2. **SECOND: Use screenshot** - Get visual coordinates only after identifying element in tree
-
-**Example - Finding a code:**
-- Check tree for text nodes with 6-character codes
-- Tree shows: {"role": "text", "name": "Code: ABC123"}
-- You KNOW the code without scrolling!
-
-**DON'T scroll blindly - use the tree to find content first!**
-"""
+Use these instead of multiple scroll actions!"""
 
         # Build initial input content
-        content = [{"type": "input_text", "text": prompt + autonomous_instructions + hybrid_guide}]
+        content = [{"type": "input_text", "text": prompt + autonomous_instructions + hybrid_guide + tool_usage_guide}]
 
         # Add accessibility tree if available
         if accessibility_tree and not accessibility_tree.get("error"):

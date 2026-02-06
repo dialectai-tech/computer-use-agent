@@ -42,11 +42,72 @@ class ClaudeProvider(ComputerUseProvider):
         Returns:
             Claude API response
         """
-        # Build initial message content with autonomous agent instructions
+        # Build initial message content - START WITH ACCESSIBILITY TREE INSTRUCTIONS!
         autonomous_instructions = """
 
 **AUTONOMOUS AGENT MODE:**
-You are an AUTONOMOUS agent. Do NOT ask the user for input or wait for them to "show you" anything. You can take screenshots yourself to see the current state. After EVERY action, take a screenshot to observe the result, then continue with your next action. Keep working until the task is FULLY complete.
+You are an AUTONOMOUS agent. Do NOT ask the user for input or wait for them to "show you" anything. You can take screenshots yourself to see the current state. After EVERY action, take a screenshot to observe the result, then continue with your next action. Keep working until the task is FULLY complete."""
+
+        # CRITICAL: Put accessibility tree guide FIRST if available
+        hybrid_guide = ""
+        if accessibility_tree and not accessibility_tree.get("error"):
+            hybrid_guide = """
+
+═══════════════════════════════════════════════════════════════
+🚨 CRITICAL: YOU HAVE AN ACCESSIBILITY TREE - USE IT FIRST! 🚨
+═══════════════════════════════════════════════════════════════
+
+Before you do ANYTHING else (especially scrolling), you MUST:
+
+**STEP 1: READ THE ACCESSIBILITY TREE BELOW**
+The tree shows ALL page content instantly - codes, buttons, text, everything!
+You do NOT need to scroll to find content - it's already in the tree!
+
+**EXAMPLE - Finding a 6-character code:**
+Instead of scrolling for 40 iterations like this:
+  ❌ "Let me scroll down to find the code"
+  ❌ "Let me scroll more to look for the code"
+  ❌ "Still scrolling to find the code..."
+  ❌ [wastes 40 iterations and fails]
+
+Do this in 1 iteration:
+  ✅ "I'll check the accessibility tree for text containing a 6-character code"
+  ✅ Found in tree: {"role": "text", "name": "Your code: AJAF5H"}
+  ✅ "The code is AJAF5H, now I'll enter it"
+  ✅ [Success in 3 iterations!]
+
+**MANDATORY WORKFLOW:**
+1. FIRST: Search the accessibility tree for what you need
+   - Looking for a code? Search tree for text nodes with 6-char codes
+   - Looking for a button? Search tree for button with that name
+   - Looking for an input? Search tree for textbox elements
+
+2. SECOND: Use screenshot ONLY for coordinates
+   - After finding element in tree, look at screenshot
+   - Find its visual position, get [x, y] coordinates
+   - Click at those coordinates
+
+**THE ACCESSIBILITY TREE:**
+- Shows EVERYTHING on the page, even if scrolled out of view
+- Contains all text content, button names, input fields
+- Reveals complete page structure and hierarchy
+- Is much faster than scrolling through screenshots
+
+**NEVER DO THIS:**
+❌ Scroll up and down looking for content
+❌ Click random buttons hoping to reveal content
+❌ Ignore the accessibility tree and only use screenshots
+❌ Scroll through 100 sections of filler content
+
+**ALWAYS DO THIS:**
+✅ Read accessibility tree FIRST to find what you need
+✅ Use screenshot for coordinates only
+✅ Be efficient - find content in tree instantly
+
+═══════════════════════════════════════════════════════════════
+"""
+
+        tool_usage_guide = """
 
 **CRITICAL - Tool Usage:**
 When using click actions, you MUST provide coordinates from the screenshot:
@@ -80,50 +141,7 @@ You have access to powerful keyboard shortcuts for efficient navigation:
 - To quickly return to top: Use Home or Ctrl+Home instead of scrolling up many times
 - To jump to bottom: Use End or Ctrl+End instead of scrolling down many times"""
 
-        # Build hybrid approach guide
-        hybrid_guide = ""
-        if accessibility_tree and not accessibility_tree.get("error"):
-            hybrid_guide = """
-
-HYBRID MODE: You have access to BOTH screenshot and accessibility tree.
-
-**CRITICAL: ALWAYS START WITH THE ACCESSIBILITY TREE!**
-
-**MANDATORY WORKFLOW (DO THIS EVERY TIME):**
-1. **FIRST: Read the accessibility tree** to understand what's on the page
-   - Find all available elements by role (button, link, textbox, etc.)
-   - Identify element names, text content, and states
-   - See the complete page structure, including content scrolled out of view
-   - Look for the information you need (codes, buttons, inputs, etc.)
-
-2. **SECOND: Use the screenshot** to find visual coordinates
-   - After identifying the target element in the tree, look at the screenshot
-   - Find the element's visual position in the screenshot
-   - Get the [x, y] pixel coordinates from the screenshot
-
-**Why this matters:**
-- The accessibility tree shows ALL page content, even if scrolled out of view
-- It reveals text content, element names, and semantic structure
-- It's much more efficient than scrolling around blindly
-- The screenshot is only needed for coordinates, not for finding content
-
-**Example - Finding a code:**
-1. Check accessibility tree for text nodes containing 6-character codes
-2. Tree might show: `{"role": "text", "name": "Code: ABC123"}`
-3. You now KNOW the code is ABC123 without needing to scroll around!
-4. Use screenshot only if you need to click something
-
-**Example - Finding a button:**
-1. Tree shows: `{"role": "button", "name": "Submit & Continue"}`
-2. Look at screenshot to find that button visually
-3. Click at the coordinates where you see "Submit & Continue" button
-
-**DON'T:**
-- Don't scroll around aimlessly looking for content
-- Don't rely only on screenshots
-- Don't ignore the accessibility tree"""
-
-        content = [{"type": "text", "text": prompt + autonomous_instructions + hybrid_guide}]
+        content = [{"type": "text", "text": prompt + autonomous_instructions + hybrid_guide + tool_usage_guide}]
 
         # Add accessibility tree if available
         if accessibility_tree and not accessibility_tree.get("error"):
