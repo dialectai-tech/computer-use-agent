@@ -538,36 +538,32 @@ class BedrockProvider(ComputerUseProvider):
 
             # Format tool result based on tool type
             if tool_name == "search_page_content":
-                # Return search results
+                # Return search results - compact format without full JSON dump
                 if tool_id in search_results_dict:
-                    import json
                     search_result = search_results_dict[tool_id]
-                    result_text = f"**Search Results:**\n```json\n{json.dumps(search_result, indent=2)}\n```\n\n{search_result.get('summary', '')}"
+                    # Just return the summary - AI doesn't need the full JSON structure
+                    result_text = search_result.get('summary', 'Search completed')
                     result_content = [{"text": result_text}]
                 else:
                     result_content = [{"text": "Search completed but no results available"}]
             elif tool_name == "computer":
-                # Return accessibility tree, page text, and screenshot
+                # Return just screenshot for most computer actions
+                # Page text and tree are only needed after search or on explicit request
                 result_content = []
 
-                # Add accessibility tree first (so it's read before image)
-                if accessibility_tree and not accessibility_tree.get("error"):
-                    import json
-                    tree_text = f"**Updated Accessibility Tree:**\n```json\n{json.dumps(accessibility_tree, indent=2)}\n```\n"
-                    result_content.append({"text": tree_text})
+                # Only add accessibility tree if explicitly requested (not by default)
+                # This saves significant tokens - tree is only useful for debugging
+                # if accessibility_tree and not accessibility_tree.get("error"):
+                #     import json
+                #     tree_text = f"**Tree:**\n```json\n{json.dumps(accessibility_tree, indent=2)}\n```\n"
+                #     result_content.append({"text": tree_text})
 
-                # Add page text second (full text content)
-                if page_text:
-                    # Truncate if too long
-                    max_text_length = 10000  # ~2500 tokens
-                    truncated_text = page_text[:max_text_length]
-                    if len(page_text) > max_text_length:
-                        truncated_text += f"\n\n[... text truncated, {len(page_text) - max_text_length} more characters ...]"
+                # OPTIMIZATION: Do NOT send page text with every action
+                # Page text is already available to AI via search_page_content
+                # Only send it with initial request or after page loads
+                # This saves ~2,500 tokens per action!
 
-                    text_section = f"**Updated Page Text:**\n```\n{truncated_text}\n```\n"
-                    result_content.append({"text": text_section})
-
-                # Return screenshot as image (last - for visual reference)
+                # Return screenshot as image (for visual reference)
                 screenshot_bytes = base64.b64decode(screenshot)
                 result_content.append({
                     "image": {
@@ -593,13 +589,23 @@ class BedrockProvider(ComputerUseProvider):
                 output = action_result.get("output", "") if action_result else ""
                 result_content = [{"text": output}]
             elif tool_name == "dom_manipulation":
-                # Return DOM manipulation result
+                # Return DOM manipulation result - compact format
                 if action_result:
-                    import json
-                    result_text = json.dumps(action_result, indent=2)
-                    result_content = [{"text": f"DOM Action Result:\n```json\n{result_text}\n```"}]
+                    success = action_result.get("success", False)
+                    if success:
+                        # For find_selectors, return compact list
+                        if "matches" in action_result:
+                            matches = action_result["matches"][:3]  # Show first 3
+                            selectors = [m.get("selector", "") for m in matches]
+                            result_text = f"✓ Found: {', '.join(selectors)}"
+                        else:
+                            result_text = "✓ DOM action successful"
+                    else:
+                        error = action_result.get("error", "Unknown error")
+                        result_text = f"✗ DOM action failed: {error}"
+                    result_content = [{"text": result_text}]
                 else:
-                    result_content = [{"text": "DOM action completed"}]
+                    result_content = [{"text": "✓ DOM action completed"}]
             elif tool_name == "reset_context":
                 # Return context reset confirmation
                 message = action_result.get("message", "Context has been reset") if action_result else "Context has been reset"

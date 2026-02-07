@@ -19,12 +19,13 @@ class SearchTool:
         self.accessibility_tree = accessibility_tree or {}
         self._lines = page_text.split('\n') if page_text else []
 
-    def search(self, query: str, search_type: str = "text") -> Dict[str, Any]:
+    def search(self, query: str, search_type: str = "text", max_results: int = 15) -> Dict[str, Any]:
         """Search for content in page text and/or accessibility tree.
 
         Args:
             query: What to search for (can be regex pattern)
             search_type: Type of search - "text", "tree", or "both"
+            max_results: Maximum number of results to return (default: 15)
 
         Returns:
             Dictionary with search results including matches and locations
@@ -34,36 +35,45 @@ class SearchTool:
             "found": False,
             "text_matches": [],
             "tree_matches": [],
+            "total_matches": 0,
+            "truncated": False,
             "summary": ""
         }
 
         # Search in page text
         if search_type in ["text", "both"]:
-            text_matches = self._search_text(query)
+            text_matches = self._search_text(query, max_results)
             if text_matches:
                 results["found"] = True
-                results["text_matches"] = text_matches
+                results["text_matches"] = text_matches[:max_results]
+                results["total_matches"] = len(text_matches)
+                if len(text_matches) > max_results:
+                    results["truncated"] = True
 
         # Search in accessibility tree
         if search_type in ["tree", "both"]:
+            remaining_limit = max_results - len(results["text_matches"])
             tree_matches = self._search_tree(query)
             if tree_matches:
                 results["found"] = True
-                results["tree_matches"] = tree_matches
+                results["tree_matches"] = tree_matches[:remaining_limit]
+                if len(tree_matches) > remaining_limit:
+                    results["truncated"] = True
 
         # Generate summary
         results["summary"] = self._generate_summary(results)
 
         return results
 
-    def _search_text(self, query: str) -> List[Dict[str, Any]]:
+    def _search_text(self, query: str, max_results: int = 15) -> List[Dict[str, Any]]:
         """Search in page text.
 
         Args:
             query: Search query (supports regex)
+            max_results: Maximum number of results to return
 
         Returns:
-            List of matches with line numbers and context
+            List of matches with line numbers and context (limited to max_results)
         """
         matches = []
 
@@ -81,6 +91,9 @@ class SearchTool:
                     "content": line.strip(),
                     "match_type": "exact" if query.lower() in line.lower() else "pattern"
                 })
+                # Stop after reaching limit to save processing time
+                if len(matches) >= max_results:
+                    break
 
         return matches
 
@@ -154,26 +167,31 @@ class SearchTool:
         # Text matches summary
         if results["text_matches"]:
             count = len(results["text_matches"])
+            total = results.get("total_matches", count)
+
             lines = [str(m["line_number"]) for m in results["text_matches"][:5]]
             lines_str = ", ".join(lines)
             if count > 5:
-                lines_str += f" and {count - 5} more"
+                lines_str += f" and {count - 5} more shown"
 
-            parts.append(f"📄 Found {count} text match(es) at line(s): {lines_str}")
+            match_text = f"📄 Found {count} text match(es)"
+            if results.get("truncated") and total > count:
+                match_text += f" (showing first {count} of {total} total)"
+            parts.append(f"{match_text} at line(s): {lines_str}")
 
             # Include first match content
             first_match = results["text_matches"][0]
-            parts.append(f"   First match (line {first_match['line_number']}): \"{first_match['content'][:100]}\"")
+            parts.append(f"   First: \"{first_match['content'][:80]}\"")
 
         # Tree matches summary
         if results["tree_matches"]:
             count = len(results["tree_matches"])
-            parts.append(f"🌲 Found {count} element(s) in accessibility tree:")
+            parts.append(f"🌲 Found {count} element(s) in tree:")
 
             # Include first few matches
             for i, match in enumerate(results["tree_matches"][:3]):
                 role = match["role"]
-                name = match["name"]
+                name = match["name"][:50]  # Truncate long names
                 parts.append(f"   {i+1}. {role}: \"{name}\"")
 
             if count > 3:

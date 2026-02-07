@@ -35,57 +35,62 @@ class DOMTool:
         Returns:
             Dictionary with action result
         """
-        if action.action_type == "click_selector":
+        # Normalize action type (accept common variations for better UX)
+        action_type = action.action_type
+        if action_type == "click":
+            action_type = "click_selector"
+        elif action_type == "fill":
+            action_type = "fill_selector"
+
+        if action_type == "click_selector":
             if not action.selector:
                 return {"success": False, "error": "Missing selector parameter"}
             return self.browser.click_selector(action.selector)
 
-        elif action.action_type == "fill_selector":
+        elif action_type == "fill_selector":
             if not action.selector or not action.text:
                 return {"success": False, "error": "Missing selector or text parameter"}
             return self.browser.fill_selector(action.selector, action.text)
 
-        elif action.action_type == "get_info":
+        elif action_type == "get_info":
             if not action.selector:
                 return {"success": False, "error": "Missing selector parameter"}
             return self.browser.get_element_info(action.selector)
 
-        elif action.action_type == "find_selectors":
+        elif action_type == "find_selectors":
             if not action.search_text:
                 return {"success": False, "error": "Missing search_text parameter"}
             return self.browser.find_selectors_by_text(action.search_text, action.limit)
 
-        elif action.action_type == "evaluate_js":
+        elif action_type == "evaluate_js":
             if not action.script:
                 return {"success": False, "error": "Missing script parameter"}
             return self.browser.evaluate_js(action.script)
 
         else:
-            return {"success": False, "error": f"Unknown action type: {action.action_type}"}
+            return {
+                "success": False,
+                "error": f"Invalid action_type '{action.action_type}'. Must be one of: find_selectors, click_selector, fill_selector, get_info, evaluate_js"
+            }
 
 
 # Tool definition for AI providers
 DOM_TOOL_DEFINITION = {
     "name": "dom_manipulation",
-    "description": """Direct DOM manipulation tool using CSS selectors. MUCH faster and more reliable than coordinate-based clicking.
+    "description": """Direct DOM manipulation using CSS selectors - 10-100x faster than coordinates!
 
-**When to use:**
-- When you know the element's text content (find selectors by text)
-- When you have a CSS selector (click or fill directly)
-- For any form filling (much more reliable than coordinates)
-- To check if elements exist before acting
+**IMPORTANT**: action_type must be EXACTLY one of these 5 values:
+1. "find_selectors" - Find CSS selectors by searching for text
+2. "click_selector" - Click using CSS selector (NOT "click"!)
+3. "fill_selector" - Fill input using CSS selector (NOT "fill"!)
+4. "get_info" - Get element info (visible, text, value)
+5. "evaluate_js" - Run JavaScript (advanced)
 
-**Actions:**
-1. find_selectors: Find CSS selectors for elements containing specific text
-2. click_selector: Click element by CSS selector (no coordinates needed!)
-3. fill_selector: Fill input by CSS selector (no coordinates needed!)
-4. get_info: Get element information (check if exists, visible, get text/value)
-5. evaluate_js: Execute JavaScript (advanced use)
+**Common workflow:**
+1. find_selectors(search_text="START") → returns selector like "button.start"
+2. click_selector(selector="button.start") → clicks it directly
 
-**Example workflow:**
-1. Use find_selectors with text="Submit" to find submit button selector
-2. Use click_selector with the selector found in step 1
-3. Much faster than: screenshot → find coordinates → click coordinates""",
+**Note**: Use "click_selector" not "click", and "fill_selector" not "fill"!""",
     "input_schema": {
         "type": "object",
         "properties": {
