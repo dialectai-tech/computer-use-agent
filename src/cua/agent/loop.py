@@ -309,6 +309,18 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                 last_action_transient = False
                 search_results = []  # Store search results for tool response
 
+                # Track if AI is only searching without taking computer actions
+                if not hasattr(self, 'search_only_count'):
+                    self.search_only_count = 0
+
+                has_computer_action = any(a.type not in [ActionType.SEARCH, ActionType.SCREENSHOT] for a in actions)
+                has_search_action = any(a.type == ActionType.SEARCH for a in actions)
+
+                if has_search_action and not has_computer_action:
+                    self.search_only_count += 1
+                elif has_computer_action:
+                    self.search_only_count = 0
+
                 for action in actions:
                     action_desc = self._format_action(action)
                     self.console.print(f"  → {action_desc}")
@@ -477,6 +489,12 @@ Required workflow:
                         action_results=action_results_list,
                         context_info=context_info
                     )
+
+                # Check if AI has been searching without acting for too long
+                if hasattr(self, 'search_only_count') and self.search_only_count >= 2:
+                    self.console.print(f"[yellow]⚠ AI has been searching for {self.search_only_count} iterations without taking action[/yellow]")
+                    # Note: The provider will add this reminder to the context automatically
+                    # via the enhanced Phase 2 prompts and system prompts
 
                 # Continue conversation (only with recent screenshots in context)
                 # Pass search results if any
