@@ -39,7 +39,8 @@ class ComputerUseAgent:
         context_window_size: int = 10,
         extended_thinking: bool = False,
         thinking_budget: int = 10000,
-        use_accessibility_tree: bool = True
+        use_accessibility_tree: bool = True,
+        two_phase_workflow: bool = False
     ):
         """Initialize agent.
 
@@ -56,6 +57,7 @@ class ComputerUseAgent:
             extended_thinking: Enable extended thinking for complex reasoning
             thinking_budget: Token budget for extended thinking
             use_accessibility_tree: Use accessibility tree alongside screenshots
+            two_phase_workflow: Enable two-phase workflow (search first, then screenshot)
         """
         self.provider = provider
         self.display_width = display_width
@@ -69,12 +71,17 @@ class ComputerUseAgent:
         self.extended_thinking = extended_thinking
         self.thinking_budget = thinking_budget
         self.use_accessibility_tree = use_accessibility_tree
+        self.two_phase_workflow = two_phase_workflow
         self.console = Console()
         self.browser: Optional[PlaywrightController] = None
 
         # Context management: track screenshots and actions for hybrid approach
         self.screenshot_history = []  # List of (screenshot, action_type, important_info)
         self.important_context = []  # List of important information to remember
+
+        # Two-phase workflow state
+        self.current_phase = 1 if two_phase_workflow else 0  # 0=normal, 1=search, 2=action
+        self.phase_search_results = None  # Store search results from phase 1
 
         # Pass configuration to provider
         self.provider.enable_caching = enable_caching
@@ -116,6 +123,8 @@ class ComputerUseAgent:
                 self.console.print("[yellow]Prompt caching: enabled[/yellow]")
             if self.use_accessibility_tree:
                 self.console.print("[yellow]Accessibility tree: enabled (hybrid mode)[/yellow]")
+            if self.two_phase_workflow:
+                self.console.print("[yellow]Two-phase workflow: enabled (search first, then screenshot)[/yellow]")
             if self.extended_thinking:
                 self.console.print(f"[yellow]Extended thinking: enabled (budget: {self.thinking_budget})[/yellow]")
 
@@ -157,16 +166,44 @@ class ComputerUseAgent:
 
             # Create initial request
             self.console.print(f"[yellow]Sending task to AI...[/yellow]")
+            if self.two_phase_workflow:
+                self.console.print(f"[cyan]Two-phase workflow: Phase 1 (Search Only)[/cyan]")
             self.console.print(f"[dim]Task: {prompt}[/dim]\n")
 
-            response = self.provider.create_initial_request(
-                prompt=prompt,
-                screenshot=screenshot,
-                accessibility_tree=accessibility_tree,
-                page_text=page_text,
-                display_width=self.display_width,
-                display_height=self.display_height
-            )
+            # Two-phase workflow: Phase 1 sends text+tree only (NO screenshot)
+            if self.two_phase_workflow:
+                phase1_prompt = f"""{prompt}
+
+🔍 PHASE 1: SEARCH ONLY (No Screenshot Yet)
+
+You are in Phase 1 of a two-phase workflow. In this phase:
+- You do NOT have access to a screenshot
+- You MUST use the search_page_content tool to find what you need
+- Report your findings clearly
+
+After you search and report findings, you will receive a screenshot in Phase 2.
+
+Your task: Use search_page_content to find all relevant content needed to complete the task.
+Report what you found (codes, buttons, inputs, etc.) with line numbers and locations."""
+
+                response = self.provider.create_initial_request(
+                    prompt=phase1_prompt,
+                    screenshot=None,  # NO screenshot in phase 1
+                    accessibility_tree=accessibility_tree,
+                    page_text=page_text,
+                    display_width=self.display_width,
+                    display_height=self.display_height
+                )
+            else:
+                # Normal workflow: send everything including screenshot
+                response = self.provider.create_initial_request(
+                    prompt=prompt,
+                    screenshot=screenshot,
+                    accessibility_tree=accessibility_tree,
+                    page_text=page_text,
+                    display_width=self.display_width,
+                    display_height=self.display_height
+                )
 
             # Main agent loop
             while iteration < max_iterations:
@@ -233,6 +270,10 @@ class ComputerUseAgent:
                             self.console.print(f"  [yellow]✗ {search_result['summary']}[/yellow]")
 
                         result = {"success": True, "search_result": search_result}
+
+                        # Two-phase workflow: Store search results for phase transition
+                        if self.two_phase_workflow and self.current_phase == 1:
+                            self.phase_search_results = search_results
                     else:
                         # Execute browser action
                         result = self.browser.execute_action(action)
@@ -242,7 +283,52 @@ class ComputerUseAgent:
                     if not result.get("success"):
                         self.console.print(f"  [red]✗ Error: {result.get('error')}[/red]")
 
-                # Take screenshot and accessibility tree after actions
+                # Two-phase workflow: Check if we need to transition from phase 1 to phase 2
+                if self.two_phase_workflow and self.current_phase == 1 and search_results:
+                    self.console.print(f"\n[cyan]→ Transitioning to Phase 2 (Action with Screenshot)[/cyan]")
+                    self.current_phase = 2
+
+                    # Now send screenshot with phase 2 prompt
+                    screenshot = self.browser.take_screenshot()
+                    self.provider.stats.add_screenshot()
+
+                    # Get fresh accessibility tree and page text
+                    accessibility_tree = None
+                    if self.use_accessibility_tree:
+                        accessibility_tree = self.browser.get_accessibility_tree()
+                    page_text = self.browser.get_page_text()
+
+                    # Build phase 2 prompt with search results
+                    search_summary = "\n".join([f"- {r[1].get('summary', '')}" for r in search_results])
+                    phase2_prompt = f"""📸 PHASE 2: ACTION WITH SCREENSHOT
+
+Search results from Phase 1:
+{search_summary}
+
+Now you have access to the screenshot. Use it to:
+1. Find the visual coordinates [x, y] of elements you found in search
+2. Use the computer tool to click, type, or interact at those coordinates
+
+The screenshot shows the current page. Use the search results to know WHAT to interact with,
+and use the screenshot to find WHERE (coordinates) to interact."""
+
+                    # Continue with phase 2 using search results
+                    response = self.provider.create_continuation_request(
+                        screenshot=screenshot,
+                        accessibility_tree=accessibility_tree,
+                        page_text=page_text,
+                        search_results=search_results,
+                        display_width=self.display_width,
+                        display_height=self.display_height
+                    )
+
+                    # Add phase 2 prompt as context
+                    self.console.print(f"[dim]{phase2_prompt}[/dim]\n")
+
+                    # Continue to next iteration with phase 2 response
+                    continue
+
+                # Take screenshot and accessibility tree after actions (normal flow)
                 screenshot = self.browser.take_screenshot()
                 self.provider.stats.add_screenshot()
 

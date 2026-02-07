@@ -105,6 +105,11 @@ console = Console()
     default=True,
     help="Use accessibility tree alongside screenshots for better web automation (default: enabled)"
 )
+@click.option(
+    "--two-phase-workflow/--no-two-phase-workflow",
+    default=False,
+    help="Enable two-phase workflow: search first (no screenshot), then action with screenshot (default: disabled)"
+)
 def cli(
     url: str,
     prompt: str,
@@ -121,7 +126,8 @@ def cli(
     context_window_size: int,
     extended_thinking: bool,
     thinking_budget: int,
-    use_accessibility_tree: bool
+    use_accessibility_tree: bool,
+    two_phase_workflow: bool
 ):
     """Computer Use Automation - Multi-provider AI agent for browser automation.
 
@@ -216,7 +222,8 @@ def cli(
         context_window_size=context_window_size,
         extended_thinking=extended_thinking,
         thinking_budget=thinking_budget,
-        use_accessibility_tree=use_accessibility_tree
+        use_accessibility_tree=use_accessibility_tree,
+        two_phase_workflow=two_phase_workflow
     )
 
     # Run task
