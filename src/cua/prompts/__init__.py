@@ -7,7 +7,7 @@ SYSTEM_PROMPT = """You are an autonomous computer use agent controlling a browse
 1. Search first: Use search_page_content to find elements (NEVER scroll blindly)
 2. Act efficiently: Use dom_manipulation for direct actions (10-100x faster than coordinates)
 3. Observe results: Take screenshots only when needed
-4. Reset context: After completing milestones (steps 5, 10, 15, etc.) to save tokens
+4. Reset context: After completing milestones to save tokens if the previous conversation is no longer relevant
 
 **Tool Priority:**
 1. dom_manipulation - Find and click via selectors (no coordinates needed!)
@@ -25,7 +25,7 @@ SYSTEM_PROMPT = """You are an autonomous computer use agent controlling a browse
 - Don't repeat failed actions - try a different approach
 - If DOM fails → use coordinates
 - If search fails → use browser_find
-- After 15-20 iterations → use reset_context tool"""
+- After a large number of iterations → use reset_context tool if appropriate."""
 
 # Concise autonomous mode instruction - OPTIMIZED
 AUTONOMOUS_MODE = """Act autonomously. Observe results and continue until complete."""
@@ -52,12 +52,12 @@ CRITICAL: Use exact action_type names: "find_selectors", "click_selector", "fill
 
 # Context reset tool guide - OPTIMIZED WITH CLEAR EXAMPLE
 CONTEXT_RESET_GUIDE = """**Context Reset (60-80% token savings!):**
-Use after completing major milestones (every 5 steps) or when stuck (20+ iterations).
+Use after completing major milestones or when stuck (20+ iterations).
 
 **IMPORTANT: All 3 parameters are REQUIRED:**
 ```
 reset_context(
-    reason="Completed Step 5, starting Step 6",
+    reason="Completed Step 5, starting Step 6, they are not related hence prior conversation is not useful",
     progress_summary="Finished steps 1-5. Currently on Step 6 of 30. Need to find Step 6 code.",
     next_goal="Search for Step 6 code reveal button, click it, enter code, submit"
 )
@@ -112,11 +112,12 @@ def build_initial_prompt(
     """
     parts = [user_prompt, AUTONOMOUS_MODE]
 
-    if has_search_tool and has_page_text:
-        parts.append(SEARCH_TOOL_GUIDE)
-        parts.append(BROWSER_FIND_GUIDE)
-        parts.append(DOM_TOOL_GUIDE)
-        parts.append(CONTEXT_RESET_GUIDE)
+    # ALWAYS include tool guides - AI needs them to use tools correctly
+    # Even if page_text is not available, the tools exist and AI must know how to use them
+    parts.append(SEARCH_TOOL_GUIDE)
+    parts.append(BROWSER_FIND_GUIDE)
+    parts.append(DOM_TOOL_GUIDE)  # CRITICAL: Contains action_type examples
+    parts.append(CONTEXT_RESET_GUIDE)
 
     if two_phase:
         parts.append(TWO_PHASE_PROMPT_P1)

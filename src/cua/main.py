@@ -107,8 +107,8 @@ console = Console()
 )
 @click.option(
     "--use-page-text/--no-page-text",
-    default=False,
-    help="Include extracted page text alongside screenshots (default: disabled)"
+    default=True,
+    help="Include extracted page text for search tool (default: enabled, needed for search_page_content)"
 )
 @click.option(
     "--two-phase-workflow/--no-two-phase-workflow",
