@@ -262,9 +262,48 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                 # Extract and execute actions
                 actions = self.provider.extract_actions(response)
 
+                # Track consecutive no-action iterations
+                if not hasattr(self, 'no_action_count'):
+                    self.no_action_count = 0
+
                 if not actions:
-                    self.console.print("[yellow]No actions found, task may be complete[/yellow]")
-                    break
+                    self.no_action_count += 1
+
+                    # Check if AI explicitly said task is complete
+                    response_text = self.provider.get_response_text(response)
+                    if "task completed" in response_text.lower() or "task is complete" in response_text.lower():
+                        self.console.print("[green]✓ AI confirmed task completion[/green]")
+                        break
+
+                    # If AI keeps not providing actions (3 times in a row), stop
+                    if self.no_action_count >= 3:
+                        self.console.print("[red]✗ AI failed to provide actions for 3 consecutive iterations[/red]")
+                        break
+
+                    # Give AI one more chance with a reminder
+                    self.console.print(f"[yellow]⚠ No actions provided (attempt {self.no_action_count}/3). Continuing...[/yellow]")
+
+                    # Take screenshot to give AI current state
+                    screenshot = self.browser.take_screenshot()
+                    self.provider.stats.add_screenshot()
+
+                    # Get current page state
+                    accessibility_tree = self.browser.get_accessibility_tree() if self.use_accessibility_tree else None
+                    page_text = self.browser.get_page_text()
+
+                    # Continue with a prompt reminding AI to take action
+                    response = self.provider.create_continuation_request(
+                        screenshot=screenshot,
+                        accessibility_tree=accessibility_tree,
+                        page_text=page_text,
+                        search_results=None,
+                        display_width=self.display_width,
+                        display_height=self.display_height
+                    )
+                    continue
+                else:
+                    # Reset counter when actions are provided
+                    self.no_action_count = 0
 
                 # Track if any actions were transient
                 last_action_transient = False
