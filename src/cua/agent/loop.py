@@ -120,7 +120,8 @@ class ComputerUseAgent:
         screenshot: Optional[str],
         accessibility_tree: Optional[dict],
         page_text: Optional[str],
-        context_size: int
+        context_size: int,
+        iteration: int = 1
     ) -> TokenBreakdown:
         """Calculate detailed token breakdown for an API call.
 
@@ -130,6 +131,7 @@ class ComputerUseAgent:
             accessibility_tree: Accessibility tree (if sent)
             page_text: Page text (if sent)
             context_size: Number of previous responses in context
+            iteration: Current iteration number (for system prompt counting)
 
         Returns:
             TokenBreakdown with estimated breakdown
@@ -150,8 +152,12 @@ class ComputerUseAgent:
             breakdown.total_output_tokens = 0
 
         # Estimate breakdown (rough approximations)
-        # System prompt is roughly 5000 tokens
-        breakdown.system_prompt_tokens = 5000
+        # System prompt is sent via 'system' parameter and cached by Bedrock
+        # Only count it on the first iteration
+        if iteration == 1:
+            breakdown.system_prompt_tokens = 500  # Actual optimized prompt is ~500 tokens (was 5000)
+        else:
+            breakdown.system_prompt_tokens = 0  # Cached by API, not re-sent
 
         # Screenshot tokens
         if screenshot:
@@ -363,7 +369,8 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                 screenshot if not self.two_phase_workflow else None,
                 accessibility_tree if self.use_accessibility_tree else None,
                 page_text if self.use_page_text else None,
-                context_size=0
+                context_size=0,
+                iteration=1  # First iteration
             )
             self.cumulative_token_stats.add_iteration(initial_breakdown)
             print_token_stats(1, initial_breakdown, self.cumulative_token_stats, self.console)
@@ -895,7 +902,8 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
                     screenshot,
                     accessibility_tree if self.use_accessibility_tree else None,
                     page_text if self.use_page_text else None,
-                    context_size=min(iteration, self.context_window_size)
+                    context_size=min(iteration, self.context_window_size),
+                    iteration=iteration + 1  # Pass 1-indexed iteration for display
                 )
                 self.cumulative_token_stats.add_iteration(breakdown)
                 print_token_stats(iteration + 1, breakdown, self.cumulative_token_stats, self.console)

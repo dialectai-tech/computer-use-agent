@@ -344,8 +344,9 @@ class BedrockProvider(ComputerUseProvider):
         )
 
         # Build message content for Converse API format
-        # Add system prompt as first message (only text, not in content blocks)
-        content = [{"text": self.system_prompt + "\n\n" + full_prompt}]
+        # IMPORTANT: Do NOT embed system prompt in user message!
+        # It will be sent via the 'system' parameter to avoid re-sending it every time
+        content = [{"text": full_prompt}]
 
         # Add accessibility tree if available (FIRST - so AI reads it before image)
         if accessibility_tree and not accessibility_tree.get("error"):
@@ -462,10 +463,12 @@ class BedrockProvider(ComputerUseProvider):
         # Call Bedrock Converse API
         # For initial request, tools are ONLY in additionalModelRequestFields
         # toolConfig is not needed for initial request
+        # Send system prompt via 'system' parameter (sent once, cached by API)
         start_time = time.time()
         response = self.client.converse(
             modelId=self.model_id,
             messages=self.messages,
+            system=[{"text": self.system_prompt}],  # System prompt sent separately, not in messages
             inferenceConfig=inference_config,
             additionalModelRequestFields=additional_fields
         )
@@ -730,10 +733,12 @@ class BedrockProvider(ComputerUseProvider):
         # NOTE: Tools are defined in BOTH places but this appears to be required:
         # - toolConfig: References tools by name (Bedrock requirement for tool results)
         # - additionalModelRequestFields: Full Anthropic tool config with dimensions
+        # Send system prompt via 'system' parameter (cached by API, not re-sent each time)
         start_time = time.time()
         response = self.client.converse(
             modelId=self.model_id,
             messages=self.messages,
+            system=[{"text": self.system_prompt}],  # System prompt sent separately
             inferenceConfig=inference_config,
             toolConfig=bedrock_tool_config,
             additionalModelRequestFields=additional_fields_continuation
