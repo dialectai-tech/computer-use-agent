@@ -183,7 +183,9 @@ class BedrockProvider(ComputerUseProvider):
         - First user message (task description)
         - Last N complete conversation cycles (N = max_message_turns)
 
-        A complete cycle must end with a user message to ensure toolUse/toolResult pairing.
+        NOTE: This is called BEFORE adding the new user message with tool results,
+        so the conversation ends with an assistant message (with toolUse blocks).
+        We need to keep this final assistant message along with the previous cycles.
         """
         # Calculate threshold for pruning
         # Need at least first message + (max_message_turns * 2) messages
@@ -193,7 +195,8 @@ class BedrockProvider(ComputerUseProvider):
             return  # No pruning needed
 
         # Work backwards to find N complete cycles
-        # Each cycle = assistant message (with toolUse) + user message (with toolResult)
+        # Each cycle = user message (with toolResult) + assistant message (with toolUse)
+        # The current last message is an assistant message (we haven't added the new user message yet)
         cycles_to_keep = self.max_message_turns
         messages_to_keep = []
 
@@ -201,6 +204,13 @@ class BedrockProvider(ComputerUseProvider):
         i = len(self.messages) - 1
         cycles_found = 0
 
+        # The last message should be assistant (with toolUse) - keep it unconditionally
+        if i >= 0 and self.messages[i]["role"] == "assistant":
+            messages_to_keep.insert(0, self.messages[i])
+            i -= 1
+            # This assistant message is waiting for tool results, not counted as complete cycle yet
+
+        # Now work backwards finding complete cycles (user + assistant pairs)
         while i >= 0 and cycles_found < cycles_to_keep:
             msg = self.messages[i]
 
@@ -218,7 +228,7 @@ class BedrockProvider(ComputerUseProvider):
                     # Incomplete cycle, stop here
                     break
             else:
-                # Should not happen if conversation is well-formed
+                # Unexpected assistant message, skip it
                 i -= 1
 
         # Prepend first user message if it exists and isn't already included
