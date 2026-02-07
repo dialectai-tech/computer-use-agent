@@ -210,6 +210,30 @@ class ComputerUseProvider(ABC):
         """
         pass
 
+    def reset_context(
+        self,
+        progress_summary: str,
+        next_goal: str,
+        current_screenshot: Optional[str] = None,
+        current_page_info: Optional[Dict] = None
+    ) -> bool:
+        """Reset conversation context, keeping only essential information.
+
+        Args:
+            progress_summary: Summary of progress made so far
+            next_goal: What needs to be done next
+            current_screenshot: Current screenshot (optional)
+            current_page_info: Current page information (optional)
+
+        Returns:
+            True if reset successful, False otherwise
+
+        Note:
+            Default implementation does nothing. Providers should override
+            to implement context reset specific to their message format.
+        """
+        return False
+
     def get_response_text(self, response: Any) -> str:
         """Extract text content from response.
 
