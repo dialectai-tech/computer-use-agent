@@ -8,6 +8,7 @@ SYSTEM_PROMPT = """You are an autonomous computer use agent. Your role is to com
 - Search page content (text and structure) using search_page_content
 - Use browser find (Ctrl+F) to navigate to content instantly
 - Use DOM manipulation for direct, fast actions (CSS selectors)
+- Reset context at milestones to save tokens and escape loops
 - Click, type, scroll, and navigate
 - Use keyboard shortcuts for efficiency
 
@@ -86,6 +87,29 @@ DOM_TOOL_GUIDE = """**DOM Manipulation (FASTEST)**: Use CSS selectors for direct
 
 **Benefits**: 10-100x faster than coordinate-based actions, more reliable, works even if element moves."""
 
+# Context reset tool guide
+CONTEXT_RESET_GUIDE = """**Context Reset (Save Tokens & Escape Loops)**: Reset conversation at milestones.
+
+**When to use:**
+- ✅ After completing a major step (e.g., submitted Step 5, now on Step 6)
+- ✅ When conversation is very long (20+ turns) and slowing you down
+- ✅ When stuck in a loop and need a fresh start
+- ✅ After saving data that's no longer needed in context
+
+**When NOT to use:**
+- ❌ In the middle of filling a form
+- ❌ While troubleshooting an error
+- ❌ Early in the task (less than 10 iterations)
+
+**Example:**
+reset_context(
+    reason="Completed Step 5, starting Step 6",
+    progress_summary="Completed steps 1-5 successfully. Now on Step 6 of 30.",
+    next_goal="Find code for Step 6, enter it, proceed to Step 7"
+)
+
+**Result**: Fresh start with only essential context, 60-80% token savings on long tasks."""
+
 # Tool usage essentials (concise)
 TOOL_USAGE_ESSENTIALS = """**Tool Requirements**:
 - DOM first: Try dom_manipulation before coordinate-based actions (10-100x faster!)
@@ -143,6 +167,7 @@ def build_initial_prompt(
         parts.append(SEARCH_TOOL_GUIDE)
         parts.append(BROWSER_FIND_GUIDE)
         parts.append(DOM_TOOL_GUIDE)
+        parts.append(CONTEXT_RESET_GUIDE)
 
     if two_phase:
         parts.append(TWO_PHASE_PROMPT_P1)

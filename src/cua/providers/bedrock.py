@@ -10,6 +10,7 @@ import re
 from cua.providers.base import ComputerUseProvider, Action, ActionType
 from cua.prompts import build_initial_prompt, get_system_prompt, TOOL_USAGE_ESSENTIALS, TWO_PHASE_PROMPT_P2
 from cua.tools.dom_tool import DOM_TOOL_DEFINITION
+from cua.tools.context_reset_tool import CONTEXT_RESET_TOOL_DEFINITION
 
 
 class BedrockProvider(ComputerUseProvider):
@@ -242,6 +243,75 @@ class BedrockProvider(ComputerUseProvider):
         else:
             self.messages = messages_to_keep
 
+    def reset_context(
+        self,
+        progress_summary: str,
+        next_goal: str,
+        current_screenshot: Optional[str] = None,
+        current_page_info: Optional[Dict] = None
+    ) -> bool:
+        """Reset conversation context for Bedrock Converse API.
+
+        Args:
+            progress_summary: Summary of progress made so far
+            next_goal: What needs to be done next
+            current_screenshot: Current screenshot (optional)
+            current_page_info: Current page information (optional)
+
+        Returns:
+            True if reset successful, False otherwise
+        """
+        if not self.messages or len(self.messages) == 0:
+            return False
+
+        # Keep ONLY the first user message (system + initial task)
+        first_user_message = self.first_user_message or (self.messages[0] if self.messages else None)
+
+        if not first_user_message:
+            return False
+
+        # Create checkpoint message
+        from cua.tools.context_reset_tool import ContextResetRequest, ContextResetTool
+        checkpoint_msg = ContextResetTool.create_reset_message(
+            ContextResetRequest(
+                reason="Context reset requested",
+                progress_summary=progress_summary,
+                next_goal=next_goal
+            ),
+            current_page_info or {}
+        )
+
+        # Build checkpoint content
+        checkpoint_content = [{"text": checkpoint_msg}]
+
+        # Add current screenshot if available
+        if current_screenshot:
+            screenshot_bytes = base64.b64decode(current_screenshot)
+            checkpoint_content.append({
+                "image": {
+                    "format": "png",
+                    "source": {"bytes": screenshot_bytes}
+                }
+            })
+
+        # Build new message list: first message + checkpoint
+        new_messages = [
+            first_user_message,
+            {
+                "role": "user",
+                "content": checkpoint_content
+            }
+        ]
+
+        # Replace message history
+        self.messages = new_messages
+        self.first_user_message = first_user_message
+
+        # Clear last tool uses since we're starting fresh
+        self.last_tool_uses = []
+
+        return True
+
     def create_initial_request(
         self,
         prompt: str,
@@ -353,6 +423,8 @@ class BedrockProvider(ComputerUseProvider):
             },
             # DOM manipulation tool - direct selector-based actions
             DOM_TOOL_DEFINITION,
+            # Context reset tool - AI can reset its own context at milestones
+            CONTEXT_RESET_TOOL_DEFINITION,
             {
                 "type": self.tool_version,
                 "name": "computer",
@@ -528,6 +600,10 @@ class BedrockProvider(ComputerUseProvider):
                     result_content = [{"text": f"DOM Action Result:\n```json\n{result_text}\n```"}]
                 else:
                     result_content = [{"text": "DOM action completed"}]
+            elif tool_name == "reset_context":
+                # Return context reset confirmation
+                message = action_result.get("message", "Context has been reset") if action_result else "Context has been reset"
+                result_content = [{"text": message}]
             else:
                 result_content = [{"text": "success"}]
 
@@ -591,6 +667,8 @@ class BedrockProvider(ComputerUseProvider):
             },
             # DOM manipulation tool - direct selector-based actions
             DOM_TOOL_DEFINITION,
+            # Context reset tool - AI can reset its own context at milestones
+            CONTEXT_RESET_TOOL_DEFINITION,
             {
                 "type": self.tool_version,
                 "name": "computer",
@@ -732,6 +810,15 @@ class BedrockProvider(ComputerUseProvider):
                     tool_input = tool_use.get('input', {})
                     action = Action(
                         type=ActionType.DOM_MANIPULATION,
+                        params=tool_input,
+                        id=tool_use.get('toolUseId', '')
+                    )
+                    actions.append(action)
+                elif tool_name == "reset_context":
+                    # Handle context reset tool
+                    tool_input = tool_use.get('input', {})
+                    action = Action(
+                        type=ActionType.CONTEXT_RESET,
                         params=tool_input,
                         id=tool_use.get('toolUseId', '')
                     )

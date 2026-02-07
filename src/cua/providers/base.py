@@ -22,6 +22,7 @@ class ActionType(Enum):
     SEARCH = "search"  # Search page content
     BROWSER_FIND = "browser_find"  # Browser find (Ctrl+F) to navigate to content
     DOM_MANIPULATION = "dom_manipulation"  # Direct DOM manipulation via CSS selectors
+    CONTEXT_RESET = "context_reset"  # Reset conversation context at milestones
 
 
 @dataclass

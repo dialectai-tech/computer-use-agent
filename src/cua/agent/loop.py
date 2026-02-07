@@ -611,6 +611,63 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                             self.console.print(f"  [green]✓ DOM action successful[/green]")
                         else:
                             self.console.print(f"  [red]✗ Error: {result.get('error')}[/red]")
+                    elif action.type == ActionType.CONTEXT_RESET:
+                        # Handle context reset action
+                        from cua.tools.context_reset_tool import ContextResetRequest, ContextResetTool
+
+                        # Create reset request from params
+                        request = ContextResetRequest(
+                            reason=action.params.get("reason", ""),
+                            progress_summary=action.params.get("progress_summary", ""),
+                            next_goal=action.params.get("next_goal", "")
+                        )
+
+                        # Validate request
+                        validation = ContextResetTool.validate_request(request)
+
+                        if validation["success"]:
+                            # Get current state
+                            page_info = self.browser.get_page_info() if hasattr(self.browser, 'get_page_info') else {}
+                            screenshot = self.browser.take_screenshot()
+
+                            # Perform reset
+                            success = self.provider.reset_context(
+                                progress_summary=request.progress_summary,
+                                next_goal=request.next_goal,
+                                current_screenshot=screenshot,
+                                current_page_info=page_info
+                            )
+
+                            if success:
+                                self.console.print(f"  [bold green]✓ Context reset successful![/bold green]")
+                                self.console.print(f"  [dim]Progress: {request.progress_summary}[/dim]")
+                                self.console.print(f"  [dim]Next: {request.next_goal}[/dim]")
+
+                                # Log the reset
+                                if self.logger:
+                                    self.logger.log_event("context_reset", {
+                                        "iteration": iteration,
+                                        "reason": request.reason,
+                                        "progress_summary": request.progress_summary,
+                                        "next_goal": request.next_goal
+                                    })
+
+                                result = {
+                                    "success": True,
+                                    "message": "Context has been reset. Continue with your next goal."
+                                }
+                            else:
+                                self.console.print(f"  [red]✗ Context reset failed[/red]")
+                                result = {
+                                    "success": False,
+                                    "error": "Failed to reset context"
+                                }
+                        else:
+                            self.console.print(f"  [red]✗ Invalid reset request: {validation['error']}[/red]")
+                            result = {
+                                "success": False,
+                                "error": validation["error"]
+                            }
                     else:
                         # Execute browser action
                         result = self.browser.execute_action(action)
@@ -1064,5 +1121,9 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
                 return "DOM Evaluate JS"
             else:
                 return f"DOM: {dom_action_type}"
+        elif action.type.value == "context_reset":
+            reason = action.params.get("reason", "")
+            truncated_reason = reason[:40] + "..." if len(reason) > 40 else reason
+            return f"Context Reset: {truncated_reason}"
         else:
             return f"{action_type.title()}"
