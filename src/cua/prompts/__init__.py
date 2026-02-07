@@ -69,6 +69,10 @@ reset_context(
 TOOL_USAGE_ESSENTIALS = """**Priority**: search → DOM → coordinates (if DOM fails).
 **Shortcuts**: Home/End (jump to top/bottom), Ctrl+Home/End (absolute)."""
 
+# Tool usage essentials WITHOUT search (when search tool unavailable)
+TOOL_USAGE_ESSENTIALS_NO_SEARCH = """**Priority**: DOM → coordinates (if DOM fails) → screenshot for visual state.
+**Shortcuts**: Home/End (jump to top/bottom), Ctrl+Home/End (absolute)."""
+
 # Two-phase workflow prompt
 TWO_PHASE_PROMPT_P1 = """**PHASE 1: SEARCH ONLY (REQUIRED)**
 
@@ -99,11 +103,11 @@ def build_initial_prompt(
     has_page_text: bool = True,
     two_phase: bool = False
 ) -> str:
-    """Build concise initial prompt.
+    """Build concise initial prompt with atomic flag-to-prompt relationships.
 
     Args:
         user_prompt: User's task description
-        has_search_tool: Whether search tool is available
+        has_search_tool: Whether search tool has data to search (page_text OR accessibility_tree)
         has_page_text: Whether page text is available
         two_phase: Whether using two-phase workflow
 
@@ -112,17 +116,29 @@ def build_initial_prompt(
     """
     parts = [user_prompt, AUTONOMOUS_MODE]
 
-    # ALWAYS include tool guides - AI needs them to use tools correctly
-    # Even if page_text is not available, the tools exist and AI must know how to use them
-    parts.append(SEARCH_TOOL_GUIDE)
+    # ATOMIC RULE: Only include guides for tools that will actually work
+
+    # SEARCH_TOOL_GUIDE: Only if search tool has data to search
+    if has_search_tool:
+        parts.append(SEARCH_TOOL_GUIDE)
+
+    # BROWSER_FIND_GUIDE: Always available (uses browser's native find)
     parts.append(BROWSER_FIND_GUIDE)
-    parts.append(DOM_TOOL_GUIDE)  # CRITICAL: Contains action_type examples
+
+    # DOM_TOOL_GUIDE: Always available (CRITICAL: Contains action_type examples)
+    parts.append(DOM_TOOL_GUIDE)
+
+    # CONTEXT_RESET_GUIDE: Always available
     parts.append(CONTEXT_RESET_GUIDE)
 
     if two_phase:
         parts.append(TWO_PHASE_PROMPT_P1)
     else:
-        parts.append(TOOL_USAGE_ESSENTIALS)
+        # Use appropriate essentials based on search tool availability
+        if has_search_tool:
+            parts.append(TOOL_USAGE_ESSENTIALS)
+        else:
+            parts.append(TOOL_USAGE_ESSENTIALS_NO_SEARCH)
 
     return "\n\n".join(parts)
 

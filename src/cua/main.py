@@ -158,6 +158,18 @@ def cli(
     console.print("[bold cyan]║  Computer Use Automation (CUA)        ║[/bold cyan]")
     console.print("[bold cyan]╚═══════════════════════════════════════╝[/bold cyan]\n")
 
+    # Validate flag combinations (atomic flag-to-feature relationships)
+    if not use_page_text and not use_accessibility_tree:
+        console.print("[yellow]⚠️  Warning: Both --no-page-text and --no-accessibility-tree are disabled.[/yellow]")
+        console.print("[yellow]   The search_page_content tool will have no data to search.[/yellow]")
+        console.print("[yellow]   Agent will rely on DOM manipulation and coordinate-based actions only.[/yellow]\n")
+
+    if two_phase_workflow and not use_page_text and not use_accessibility_tree:
+        console.print("[bold red]Error: --two-phase-workflow requires either --use-page-text or --use-accessibility-tree[/bold red]")
+        console.print("Two-phase workflow's first phase is search-only, which needs data to search.")
+        console.print("Enable at least one: --use-page-text (recommended) or --use-accessibility-tree")
+        sys.exit(1)
+
     # Initialize provider
     try:
         if provider.lower() == "claude":
