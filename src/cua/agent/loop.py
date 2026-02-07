@@ -374,17 +374,25 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
 
                     # Build phase 2 prompt with search results
                     search_summary = "\n".join([f"- {r[1].get('summary', '')}" for r in search_results])
-                    phase2_prompt = f"""📸 PHASE 2: ACTION WITH SCREENSHOT
+                    phase2_prompt = f"""📸 PHASE 2: NOW TAKE ACTION (REQUIRED)
 
 Search results from Phase 1:
 {search_summary}
 
-Now you have access to the screenshot. Use it to:
-1. Find the visual coordinates [x, y] of elements you found in search
-2. Use the computer tool to click, type, or interact at those coordinates
+**CRITICAL: You MUST now use the computer tool to take action. Do NOT just search again.**
 
-The screenshot shows the current page. Use the search results to know WHAT to interact with,
-and use the screenshot to find WHERE (coordinates) to interact."""
+Required workflow:
+1. Look at the screenshot to find visual coordinates [x, y] of elements from search
+2. Use browser_find(search_term) to navigate to specific elements (faster than scrolling)
+3. Take a computer action: click, type, or keyboard shortcut
+4. Take screenshot to see result
+
+**DO NOT:**
+- Search again without taking action
+- Provide only text without tool calls
+- Skip clicking/typing actions
+
+**YOU MUST:** Use computer tool (click/type) or browser_find tool in this phase."""
 
                     # Continue with phase 2 using search results
                     response = self.provider.create_continuation_request(
