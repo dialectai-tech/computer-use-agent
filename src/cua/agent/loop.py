@@ -229,35 +229,93 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                 # Check if task is complete
                 if self.provider.is_task_complete(response):
                     text = self.provider.get_response_text(response)
-                    if text:
-                        self.console.print(f"[green]✓ {text}[/green]")
-                    self.console.print("\n[bold green]✓ Task completed successfully![/bold green]")
 
-                    total_time = time.time() - start_time
+                    # Verify if truly complete by checking page content for progress indicators
+                    page_text = self.browser.get_page_text() if hasattr(self.browser, 'get_page_text') else ""
                     page_info = self.browser.get_page_info()
 
-                    # Log final success
-                    if self.logger:
-                        summary = {
-                            "success": True,
-                            "iterations": iteration,
-                            "total_time": total_time,
-                            "final_url": page_info.get("url"),
-                            "stats": self.provider.stats.to_dict(),
-                            "two_phase_workflow": self.two_phase_workflow,
-                            "extended_thinking": self.extended_thinking,
-                            "accessibility_tree_enabled": self.use_accessibility_tree,
-                        }
-                        self.logger.log_summary(summary)
+                    # Check for multi-step progress indicators (Step X of Y, Task X/Y, etc.)
+                    import re
+                    step_match = re.search(r'Step\s+(\d+)\s+of\s+(\d+)', page_text, re.IGNORECASE)
+                    task_match = re.search(r'Task\s+(\d+)\s*/\s*(\d+)', page_text, re.IGNORECASE)
 
-                    return TaskResult(
-                        success=True,
-                        iterations=iteration,
-                        total_time=total_time,
-                        final_url=page_info.get("url"),
-                        stats=self.provider.stats.to_dict(),
-                        video_path=self.browser.get_video_path() if self.browser else None
-                    )
+                    is_truly_complete = True
+                    completion_message = text
+
+                    if step_match:
+                        current_step = int(step_match.group(1))
+                        total_steps = int(step_match.group(2))
+                        if current_step < total_steps:
+                            is_truly_complete = False
+                            completion_message = f"Step {current_step} of {total_steps} completed, but {total_steps - current_step} more steps remain!"
+                    elif task_match:
+                        current_task = int(task_match.group(1))
+                        total_tasks = int(task_match.group(2))
+                        if current_task < total_tasks:
+                            is_truly_complete = False
+                            completion_message = f"Task {current_task} of {total_tasks} completed, but {total_tasks - current_task} more tasks remain!"
+
+                    if is_truly_complete:
+                        # Actually complete - celebrate and exit!
+                        if text:
+                            self.console.print(f"[green]✓ {text}[/green]")
+                        self.console.print("\n[bold green]✓ Task completed successfully![/bold green]")
+
+                        total_time = time.time() - start_time
+
+                        # Log final success
+                        if self.logger:
+                            summary = {
+                                "success": True,
+                                "iterations": iteration,
+                                "total_time": total_time,
+                                "final_url": page_info.get("url"),
+                                "stats": self.provider.stats.to_dict(),
+                                "two_phase_workflow": self.two_phase_workflow,
+                                "extended_thinking": self.extended_thinking,
+                                "accessibility_tree_enabled": self.use_accessibility_tree,
+                            }
+                            self.logger.log_summary(summary)
+
+                        return TaskResult(
+                            success=True,
+                            iterations=iteration,
+                            total_time=total_time,
+                            final_url=page_info.get("url"),
+                            stats=self.provider.stats.to_dict(),
+                            video_path=self.browser.get_video_path() if self.browser else None
+                        )
+                    else:
+                        # False completion - continue with reminder
+                        self.console.print(f"[yellow]⚠️ {completion_message}[/yellow]")
+                        self.console.print(f"[yellow]Continuing to next step...[/yellow]")
+
+                        # Take screenshot to see current state
+                        screenshot = self.browser.take_screenshot()
+                        self.provider.stats.add_screenshot()
+                        accessibility_tree = self.browser.get_accessibility_tree() if self.use_accessibility_tree else None
+                        page_text = self.browser.get_page_text()
+
+                        # Build reminder message
+                        progress_reminder = f"""⚠️ IMPORTANT: Task is NOT complete yet!
+
+{completion_message}
+
+You MUST continue to the next step. Do NOT stop here.
+
+Take a screenshot, analyze the current state, and proceed with the next step of the challenge."""
+
+                        # Continue with reminder
+                        response = self.provider.create_continuation_request(
+                            screenshot=screenshot,
+                            accessibility_tree=accessibility_tree,
+                            page_text=page_text,
+                            search_results=None,
+                            display_width=self.display_width,
+                            display_height=self.display_height,
+                            additional_instruction=progress_reminder
+                        )
+                        continue
 
                 # Extract and execute actions
                 actions = self.provider.extract_actions(response)
@@ -556,8 +614,43 @@ Try a DIFFERENT approach:
 - Consider calling MULTIPLE actions in one response (click → type → submit)"""
                             self.console.print(f"[yellow]{stuck_message}[/yellow]")
 
+                # Add progress reminder every 5 iterations
+                progress_reminder = None
+                if iteration % 5 == 0:
+                    # Check for progress indicators in current page
+                    import re
+                    step_match = re.search(r'Step\s+(\d+)\s+of\s+(\d+)', page_text, re.IGNORECASE)
+                    task_match = re.search(r'Task\s+(\d+)\s*/\s*(\d+)', page_text, re.IGNORECASE)
+
+                    if step_match:
+                        current_step = int(step_match.group(1))
+                        total_steps = int(step_match.group(2))
+                        progress_reminder = f"""📊 PROGRESS CHECK (Iteration {iteration}):
+Currently on Step {current_step} of {total_steps}.
+{total_steps - current_step} more steps to complete.
+
+Remember: Keep working through ALL steps until you reach Step {total_steps}."""
+                    elif task_match:
+                        current_task = int(task_match.group(1))
+                        total_tasks = int(task_match.group(2))
+                        progress_reminder = f"""📊 PROGRESS CHECK (Iteration {iteration}):
+Currently on Task {current_task} of {total_tasks}.
+{total_tasks - current_task} more tasks to complete.
+
+Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
+
+                # Combine stuck message and progress reminder if both exist
+                combined_message = None
+                if stuck_message and progress_reminder:
+                    combined_message = f"{stuck_message}\n\n{progress_reminder}"
+                elif stuck_message:
+                    combined_message = stuck_message
+                elif progress_reminder:
+                    combined_message = progress_reminder
+                    self.console.print(f"[cyan]{progress_reminder}[/cyan]")
+
                 # Continue conversation (only with recent screenshots in context)
-                # Pass search results if any, and stuck message if detected
+                # Pass search results if any, and combined messages if detected
                 response = self.provider.create_continuation_request(
                     screenshot=screenshot,
                     accessibility_tree=accessibility_tree,
@@ -565,7 +658,7 @@ Try a DIFFERENT approach:
                     search_results=search_results if search_results else None,
                     display_width=self.display_width,
                     display_height=self.display_height,
-                    additional_instruction=stuck_message  # Inject stuck detection message
+                    additional_instruction=combined_message  # Inject stuck/progress messages
                 )
 
                 # Small delay between iterations
