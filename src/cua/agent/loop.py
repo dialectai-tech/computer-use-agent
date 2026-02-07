@@ -291,6 +291,23 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                     accessibility_tree = self.browser.get_accessibility_tree() if self.use_accessibility_tree else None
                     page_text = self.browser.get_page_text()
 
+                    # Build explicit instruction for retry
+                    retry_instruction = f"""⚠️ NO TOOL CALLS DETECTED - You provided only text, no actions!
+
+You MUST call tools to make progress. Here's what to do RIGHT NOW:
+
+1. Look at the screenshot below
+2. Find an element to interact with (button, link, input field)
+3. Call the computer tool with proper parameters:
+   - For clicking: {{"action": "left_click", "coordinate": [x, y]}}
+   - For typing: {{"action": "type", "text": "your text here"}}
+   - For keys: {{"action": "key", "text": "Return"}}
+
+EXAMPLE: If you see a START button at position [640, 400]:
+Call: {{"action": "left_click", "coordinate": [640, 400]}}
+
+This is attempt {self.no_action_count}/3. If you don't provide actions now, the task will fail."""
+
                     # Continue with a prompt reminding AI to take action
                     response = self.provider.create_continuation_request(
                         screenshot=screenshot,
@@ -298,7 +315,8 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                         page_text=page_text,
                         search_results=None,
                         display_width=self.display_width,
-                        display_height=self.display_height
+                        display_height=self.display_height,
+                        additional_instruction=retry_instruction
                     )
                     continue
                 else:
@@ -393,21 +411,25 @@ Search results from Phase 1:
 
 **CRITICAL: You MUST now use the computer tool to take action. Do NOT just search again.**
 
-Required workflow:
-1. Look at the screenshot to find visual coordinates [x, y] of elements from search
-2. Use browser_find(search_term) to navigate to specific elements (faster than scrolling)
-3. Take a computer action: click, type, or keyboard shortcut
-4. Take screenshot to see result
+**EXAMPLE - If you found "START" button in search:**
+CORRECT: Use computer tool to click at its coordinates from the screenshot:
+- Look at screenshot, see START button at position [640, 400]
+- Call: {{"action": "left_click", "coordinate": [640, 400]}}
+
+WRONG: Saying "I will click START" without actually calling the computer tool
+WRONG: Calling browser_find without search_term parameter
+
+**Required workflow for THIS iteration:**
+1. Look at screenshot for visual coordinates [x, y] of elements you found
+2. Call computer tool with action and coordinate
+3. OR use browser_find with search_term parameter: {{"search_term": "START", "close_after": true}}
 
 **DO NOT:**
-- Search again without taking action
 - Provide only text without tool calls
-- Skip clicking/typing actions
-- Declare task complete just because you FOUND elements - you must CLICK/TYPE/INTERACT first!
-- Say "I need to do X" then stop - you must ACTUALLY DO X
+- Call tools with missing required parameters
+- Say "I need to do X" then stop - you must ACTUALLY DO X with a tool call
 
-**YOU MUST:** Use computer tool (click/type) or browser_find tool in this phase.
-**REMEMBER:** Finding is NOT completing. You must PERFORM actions and VERIFY results before declaring completion."""
+**YOU MUST make at least ONE tool call in this response (computer or browser_find).**"""
 
                     # Continue with phase 2 using search results
                     response = self.provider.create_continuation_request(
