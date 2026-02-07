@@ -19,6 +19,7 @@ class ActionType(Enum):
     SCROLL = "scroll"
     WAIT = "wait"
     MOUSE_MOVE = "mouse_move"
+    SEARCH = "search"  # Search page content
 
 
 @dataclass
@@ -160,6 +161,7 @@ class ComputerUseProvider(ABC):
         screenshot: str,
         accessibility_tree: Optional[dict] = None,
         page_text: Optional[str] = None,
+        search_results: Optional[List] = None,
         action_result: Optional[Dict[str, Any]] = None,
         display_width: int = 1024,
         display_height: int = 768
@@ -170,6 +172,7 @@ class ComputerUseProvider(ABC):
             screenshot: Base64-encoded screenshot
             accessibility_tree: Accessibility tree from browser (optional)
             page_text: Extracted text content from page (optional)
+            search_results: Results from search_page_content tool (optional)
             action_result: Result from previous action execution
             display_width: Display width in pixels
             display_height: Display height in pixels

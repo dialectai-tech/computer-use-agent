@@ -6,8 +6,9 @@ from typing import Optional
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from cua.providers.base import ComputerUseProvider
+from cua.providers.base import ComputerUseProvider, ActionType
 from cua.browser.playwright_controller import PlaywrightController
+from cua.tools.search_tool import SearchTool
 
 
 @dataclass
@@ -201,6 +202,8 @@ class ComputerUseAgent:
 
                 # Track if any actions were transient
                 last_action_transient = False
+                search_results = []  # Store search results for tool response
+
                 for action in actions:
                     action_desc = self._format_action(action)
                     self.console.print(f"  → {action_desc}")
@@ -211,7 +214,29 @@ class ComputerUseAgent:
                         last_action_transient = True
 
                     # Execute action
-                    result = self.browser.execute_action(action)
+                    if action.type == ActionType.SEARCH:
+                        # Handle search action with SearchTool (not through browser)
+                        page_text = self.browser.get_page_text() if hasattr(self.browser, 'get_page_text') else ""
+                        accessibility_tree = self.browser.get_accessibility_tree() if self.use_accessibility_tree else None
+
+                        search_tool = SearchTool(page_text, accessibility_tree)
+                        query = action.params.get("query", "")
+                        search_type = action.params.get("search_type", "both")
+
+                        search_result = search_tool.search(query, search_type)
+                        search_results.append((action.id, search_result))
+
+                        # Display search results
+                        if search_result["found"]:
+                            self.console.print(f"  [green]✓ {search_result['summary']}[/green]")
+                        else:
+                            self.console.print(f"  [yellow]✗ {search_result['summary']}[/yellow]")
+
+                        result = {"success": True, "search_result": search_result}
+                    else:
+                        # Execute browser action
+                        result = self.browser.execute_action(action)
+
                     self.provider.stats.add_action()
 
                     if not result.get("success"):
@@ -260,10 +285,12 @@ class ComputerUseAgent:
                 self.console.print(f"  [dim]Context: {len(self.screenshot_history)} screenshots ({non_transient_count} important)[/dim]")
 
                 # Continue conversation (only with recent screenshots in context)
+                # Pass search results if any
                 response = self.provider.create_continuation_request(
                     screenshot=screenshot,
                     accessibility_tree=accessibility_tree,
                     page_text=page_text,
+                    search_results=search_results if search_results else None,
                     display_width=self.display_width,
                     display_height=self.display_height
                 )

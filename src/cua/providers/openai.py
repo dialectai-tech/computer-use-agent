@@ -136,6 +136,7 @@ Use these instead of multiple scroll actions!"""
         screenshot: str,
         accessibility_tree: Optional[dict] = None,
         page_text: Optional[str] = None,
+        search_results: Optional[List] = None,
         action_result: Optional[Dict[str, Any]] = None,
         display_width: int = 1024,
         display_height: int = 768

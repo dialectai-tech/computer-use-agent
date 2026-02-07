@@ -177,65 +177,75 @@ If you need to see the current state, use the screenshot action - never ask the 
             hybrid_guide = """
 
 ═══════════════════════════════════════════════════════════════
-🚨 CRITICAL: YOU HAVE PAGE TEXT & ACCESSIBILITY TREE! 🚨
+🚨 CRITICAL: YOU HAVE A SEARCH TOOL! 🚨
 ═══════════════════════════════════════════════════════════════
 
-⚠️ STOP! Before you scroll even ONCE, you MUST:
+⚠️ STOP! You have a **search_page_content** tool that searches ALL page content!
 
-**STEP 1: READ THE PAGE TEXT BELOW (ALL visible text on the page)**
-**STEP 2: READ THE ACCESSIBILITY TREE BELOW (ALL page structure)**
-
-These show EVERYTHING on the page - you do NOT need to scroll!
+**MANDATORY FIRST STEP:**
+BEFORE taking ANY computer action (click, type, scroll), you MUST use:
+**search_page_content(query="what you're looking for", search_type="both")**
 
 **EXAMPLE - Finding a 6-character code (THE WRONG WAY):**
   ❌ "Let me scroll down to find the code"
-  ❌ "Let me scroll more to look for the code"
-  ❌ "Still scrolling to find the code..."
-  ❌ "Maybe I'll try pressing Ctrl+F"
-  ❌ "Let me scroll up to check"
+  ❌ "Let me click around looking for it"
   ❌ [wastes 40 iterations, finds nothing, gives up]
 
 **EXAMPLE - Finding a 6-character code (THE RIGHT WAY):**
-  ✅ STEP 1: Search PAGE TEXT for any 6-character codes (like "AB12CD", "XYZ789")
-  ✅ STEP 2: If found in text → locate in screenshot → get coordinates → copy/type it
-  ✅ STEP 3: If not in text → search ACCESSIBILITY TREE for text/button elements
-  ✅ Result: Found code in 1 iteration! Enter it → Next level!
+  ✅ Use: search_page_content(query="[A-Z0-9]{6}", search_type="text")
+  ✅ Tool returns: "Found code AJAF5H at line 23"
+  ✅ Look at screenshot to find where "AJAF5H" appears visually
+  ✅ Click input field, type "AJAF5H", click Submit
+  ✅ Success in 3 iterations!
 
-**MANDATORY WORKFLOW FOR ANY TASK:**
+**HOW TO USE THE SEARCH TOOL:**
 
-1. **FIRST: Search PAGE TEXT** (provided below after accessibility tree)
-   - All visible text is extracted for you - no scrolling needed!
-   - Search for: codes, button labels, instructions, any text you need
-   - Example: Looking for "ABC123"? Just search the page text!
+1. **Search for codes:**
+   search_page_content(query="[A-Z0-9]{6}", search_type="text")
 
-2. **SECOND: Search ACCESSIBILITY TREE** (provided below)
-   - Tree shows structure: buttons, inputs, links, headings
-   - Find element roles and names
-   - Example: Find button with name="Submit" or textbox with name="code"
+2. **Search for buttons:**
+   search_page_content(query="Submit", search_type="tree")
 
-3. **THIRD: Use SCREENSHOT for coordinates ONLY**
-   - After finding element in text/tree, look at screenshot
-   - Find its visual position, get [x, y] pixel coordinates
-   - Click, type, or interact at those coordinates
+3. **Search for any text:**
+   search_page_content(query="Enter code", search_type="both")
+
+4. **The tool returns:**
+   - Exact line numbers where text was found
+   - Element information from accessibility tree
+   - Summary of all matches
+
+**MANDATORY WORKFLOW:**
+
+1. **FIRST: Use search_page_content tool**
+   - Search for what you need (codes, buttons, text)
+   - Tool searches ALL page content instantly
+   - Returns exact locations and matches
+
+2. **SECOND: Use screenshot for COORDINATES ONLY**
+   - Look at screenshot to find visual position
+   - Get [x, y] pixel coordinates
+   - Use computer tool to click/type at those coordinates
+
+3. **THIRD: Verify and continue**
+   - Check result
+   - Repeat with next task
 
 **WHY THIS WORKS:**
-- PAGE TEXT = All text content already extracted (no scrolling!)
-- ACCESSIBILITY TREE = All interactive elements already found (no hunting!)
-- SCREENSHOT = Visual positioning only (efficient!)
+- search_page_content = Searches ALL content instantly (no scrolling!)
+- Screenshot = Visual positioning only (find coordinates)
+- Computer tool = Execute clicks/typing at coordinates
 
 **NEVER DO THIS:**
-❌ Scroll up and down looking for content
-❌ Press Ctrl+F to search (you already have the text!)
-❌ Click random buttons hoping something appears
-❌ Ignore the page text and accessibility tree
-❌ Scroll through 100 sections of filler
-❌ Say "I need to scroll to find X" (X is already in the text!)
+❌ Scroll without searching first
+❌ Click randomly hoping to find things
+❌ Ignore the search tool
+❌ Use screenshot to "look for" content (use search tool instead!)
 
 **ALWAYS DO THIS:**
-✅ Search PAGE TEXT first for any text content
-✅ Search ACCESSIBILITY TREE second for structure/elements
-✅ Use SCREENSHOT third for coordinates
-✅ Be efficient - everything is already provided!
+✅ Use search_page_content FIRST
+✅ Use screenshot SECOND (for coordinates)
+✅ Use computer tool THIRD (for actions)
+✅ Be efficient - search finds everything instantly!
 
 ═══════════════════════════════════════════════════════════════
 """
@@ -309,6 +319,26 @@ You have access to powerful keyboard shortcuts for efficient navigation:
 
         # Tools configuration - use model-specific tool version
         tools_config = [
+            # Custom search tool - MUST be used before computer tool
+            {
+                "name": "search_page_content",
+                "description": "Search page text and accessibility tree for content. ALWAYS use this BEFORE taking any computer actions. This tool has access to ALL page content including text that may not be visible in screenshots.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "What to search for (text, code, button name, etc.). Supports regex patterns."
+                        },
+                        "search_type": {
+                            "type": "string",
+                            "enum": ["text", "tree", "both"],
+                            "description": "Where to search: 'text' (page text), 'tree' (accessibility tree), or 'both'. Default: 'both'"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            },
             {
                 "type": self.tool_version,
                 "name": "computer",
@@ -383,6 +413,7 @@ You have access to powerful keyboard shortcuts for efficient navigation:
         screenshot: str,
         accessibility_tree: Optional[dict] = None,
         page_text: Optional[str] = None,
+        search_results: Optional[List] = None,
         action_result: Optional[Dict[str, Any]] = None,
         display_width: int = 1024,
         display_height: int = 768
@@ -392,6 +423,8 @@ You have access to powerful keyboard shortcuts for efficient navigation:
         Args:
             screenshot: Base64-encoded screenshot
             accessibility_tree: Accessibility tree from browser (optional)
+            page_text: Extracted text content from page (optional)
+            search_results: Results from search_page_content tool (optional)
             action_result: Result from previous action execution
             display_width: Display width in pixels
             display_height: Display height in pixels
@@ -402,12 +435,27 @@ You have access to powerful keyboard shortcuts for efficient navigation:
         # Build tool result content for each tool use
         tool_result_content = []
 
+        # Create a dict of search results by tool ID for quick lookup
+        search_results_dict = {}
+        if search_results:
+            for tool_id, result in search_results:
+                search_results_dict[tool_id] = result
+
         for tool_use in self.last_tool_uses:
             tool_id = tool_use.get('toolUseId')
             tool_name = tool_use.get('name')
 
             # Format tool result based on tool type
-            if tool_name == "computer":
+            if tool_name == "search_page_content":
+                # Return search results
+                if tool_id in search_results_dict:
+                    import json
+                    search_result = search_results_dict[tool_id]
+                    result_text = f"**Search Results:**\n```json\n{json.dumps(search_result, indent=2)}\n```\n\n{search_result.get('summary', '')}"
+                    result_content = [{"text": result_text}]
+                else:
+                    result_content = [{"text": "Search completed but no results available"}]
+            elif tool_name == "computer":
                 # Return accessibility tree, page text, and screenshot
                 result_content = []
 
@@ -458,6 +506,26 @@ You have access to powerful keyboard shortcuts for efficient navigation:
 
         # Tools configuration - use model-specific tool version
         tools_config = [
+            # Custom search tool - MUST be used before computer tool
+            {
+                "name": "search_page_content",
+                "description": "Search page text and accessibility tree for content. ALWAYS use this BEFORE taking any computer actions.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "What to search for"
+                        },
+                        "search_type": {
+                            "type": "string",
+                            "enum": ["text", "tree", "both"],
+                            "description": "Where to search"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            },
             {
                 "type": self.tool_version,
                 "name": "computer",
@@ -576,6 +644,15 @@ You have access to powerful keyboard shortcuts for efficient navigation:
                             id=tool_use.get('toolUseId', '')
                         )
                         actions.append(action)
+                elif tool_name == "search_page_content":
+                    # Handle search tool
+                    tool_input = tool_use.get('input', {})
+                    action = Action(
+                        type=ActionType.SEARCH,
+                        params=tool_input,
+                        id=tool_use.get('toolUseId', '')
+                    )
+                    actions.append(action)
 
         return actions
 
