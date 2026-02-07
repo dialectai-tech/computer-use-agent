@@ -1,6 +1,9 @@
 """Main agent loop for computer use automation."""
 
 import time
+import json
+from pathlib import Path
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional
 from rich.console import Console
@@ -10,6 +13,13 @@ from cua.providers.base import ComputerUseProvider, ActionType
 from cua.browser.playwright_controller import PlaywrightController
 from cua.tools.search_tool import SearchTool
 from cua.utils.logger import AgentLogger
+from cua.utils.token_stats import (
+    TokenBreakdown,
+    CumulativeTokenStats,
+    print_token_stats,
+    estimate_tokens,
+    estimate_image_tokens
+)
 
 
 @dataclass
@@ -87,6 +97,10 @@ class ComputerUseAgent:
         self.browser: Optional[PlaywrightController] = None
         self.logger: Optional[AgentLogger] = None  # Will be initialized when task starts
 
+        # Token statistics tracking
+        self.cumulative_token_stats = CumulativeTokenStats()
+        self.conversation_dump_dir: Optional[Path] = None  # Will be set when task starts
+
         # Context management: track screenshots and actions for hybrid approach
         self.screenshot_history = []  # List of (screenshot, action_type, important_info)
         self.important_context = []  # List of important information to remember
@@ -99,6 +113,117 @@ class ComputerUseAgent:
         self.provider.enable_caching = enable_caching
         self.provider.extended_thinking = extended_thinking
         self.provider.thinking_budget = thinking_budget
+
+    def _calculate_token_breakdown(
+        self,
+        response,
+        screenshot: Optional[str],
+        accessibility_tree: Optional[dict],
+        page_text: Optional[str],
+        context_size: int
+    ) -> TokenBreakdown:
+        """Calculate detailed token breakdown for an API call.
+
+        Args:
+            response: Provider response object with usage stats
+            screenshot: Base64 screenshot (if sent)
+            accessibility_tree: Accessibility tree (if sent)
+            page_text: Page text (if sent)
+            context_size: Number of previous responses in context
+
+        Returns:
+            TokenBreakdown with estimated breakdown
+        """
+        breakdown = TokenBreakdown()
+
+        # Get total tokens from response
+        if hasattr(response, 'input_tokens'):
+            breakdown.total_input_tokens = response.input_tokens
+            breakdown.total_output_tokens = response.output_tokens
+        else:
+            # Fallback: estimate from provider stats
+            stats = self.provider.get_stats()
+            breakdown.total_input_tokens = stats.input_tokens
+            breakdown.total_output_tokens = stats.output_tokens
+
+        # Estimate breakdown (rough approximations)
+        # System prompt is roughly 5000 tokens
+        breakdown.system_prompt_tokens = 5000
+
+        # Screenshot tokens
+        if screenshot:
+            breakdown.screenshots_tokens = estimate_image_tokens(
+                self.display_width,
+                self.display_height
+            ) * (context_size + 1)  # Current + previous screenshots
+
+        # Page text tokens
+        if page_text:
+            breakdown.page_text_tokens = estimate_tokens(page_text) * (context_size + 1)
+
+        # Accessibility tree tokens
+        if accessibility_tree:
+            import json
+            tree_str = json.dumps(accessibility_tree)
+            breakdown.accessibility_tree_tokens = estimate_tokens(tree_str) * (context_size + 1)
+
+        # AI responses (remaining tokens)
+        estimated_content = (
+            breakdown.system_prompt_tokens +
+            breakdown.screenshots_tokens +
+            breakdown.page_text_tokens +
+            breakdown.accessibility_tree_tokens
+        )
+        breakdown.ai_responses_tokens = max(0, breakdown.total_input_tokens - estimated_content)
+
+        return breakdown
+
+    def _dump_conversation(self, iteration: int):
+        """Dump current conversation state to JSON file.
+
+        Args:
+            iteration: Current iteration number
+        """
+        if not self.conversation_dump_dir:
+            return
+
+        # Extract session_id from directory name
+        session_id = self.conversation_dump_dir.name.replace("conversations_", "")
+
+        # Get messages from provider
+        messages = []
+        if hasattr(self.provider, 'messages'):
+            messages = self.provider.messages
+
+        # Create dump data
+        dump_data = {
+            "session_id": session_id,
+            "iteration": iteration,
+            "timestamp": datetime.now().isoformat(),
+            "message_count": len(messages),
+            "messages": messages,
+            "token_stats": self.cumulative_token_stats.to_dict(),
+            "configuration": {
+                "display_width": self.display_width,
+                "display_height": self.display_height,
+                "zoom": self.zoom,
+                "use_accessibility_tree": self.use_accessibility_tree,
+                "use_page_text": self.use_page_text,
+                "context_window_size": self.context_window_size,
+                "two_phase_workflow": self.two_phase_workflow,
+                "max_message_turns": self.max_message_turns,
+            }
+        }
+
+        # Save to file
+        filename = f"conversation_{session_id}_iter{iteration:03d}.json"
+        filepath = self.conversation_dump_dir / filename
+
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(dump_data, f, indent=2, default=str)
+        except Exception as e:
+            self.console.print(f"[yellow]Warning: Failed to dump conversation: {e}[/yellow]")
 
     def run_task(
         self,
@@ -155,6 +280,12 @@ class ComputerUseAgent:
             session_name = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             self.logger = AgentLogger(session_name=session_name)
             self.console.print(f"[dim]Logging to: {self.logger.get_log_path()}[/dim]")
+
+            # Initialize conversation dump directory
+            session_id = session_name
+            self.conversation_dump_dir = Path("logs") / f"conversations_{session_id}"
+            self.conversation_dump_dir.mkdir(parents=True, exist_ok=True)
+            self.console.print(f"[dim]Conversation dumps: {self.conversation_dump_dir}[/dim]")
 
             # Navigate to URL
             self.console.print(f"[yellow]Navigating to {url}...[/yellow]")
@@ -222,6 +353,18 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                     display_width=self.display_width,
                     display_height=self.display_height
                 )
+
+            # Track initial request tokens
+            initial_breakdown = self._calculate_token_breakdown(
+                response,
+                screenshot if not self.two_phase_workflow else None,
+                accessibility_tree if self.use_accessibility_tree else None,
+                page_text if self.use_page_text else None,
+                context_size=0
+            )
+            self.cumulative_token_stats.add_iteration(initial_breakdown)
+            print_token_stats(1, initial_breakdown, self.cumulative_token_stats, self.console)
+            self._dump_conversation(1)
 
             # Main agent loop
             while iteration < max_iterations:
@@ -663,6 +806,20 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
                     display_height=self.display_height,
                     additional_instruction=combined_message  # Inject stuck/progress messages
                 )
+
+                # Calculate and display token stats
+                breakdown = self._calculate_token_breakdown(
+                    response,
+                    screenshot,
+                    accessibility_tree if self.use_accessibility_tree else None,
+                    page_text if self.use_page_text else None,
+                    context_size=min(iteration, self.context_window_size)
+                )
+                self.cumulative_token_stats.add_iteration(breakdown)
+                print_token_stats(iteration + 1, breakdown, self.cumulative_token_stats, self.console)
+
+                # Dump conversation to JSON
+                self._dump_conversation(iteration + 1)
 
                 # Small delay between iterations
                 time.sleep(0.5)
