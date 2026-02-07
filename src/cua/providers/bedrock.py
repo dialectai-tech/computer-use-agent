@@ -181,21 +181,55 @@ class BedrockProvider(ComputerUseProvider):
 
         Keeps:
         - First user message (task description)
-        - Last N message turns (N = max_message_turns)
+        - Last N complete conversation cycles (N = max_message_turns)
+
+        A complete cycle must end with a user message to ensure toolUse/toolResult pairing.
         """
-        if len(self.messages) <= self.max_message_turns * 2:
+        # Calculate threshold for pruning
+        # Need at least first message + (max_message_turns * 2) messages
+        min_messages = 1 + (self.max_message_turns * 2)
+
+        if len(self.messages) <= min_messages:
             return  # No pruning needed
 
-        # Keep first user message + last N turns
-        # Each turn = user message + assistant message (2 messages)
-        keep_count = self.max_message_turns * 2
+        # Work backwards to find N complete cycles
+        # Each cycle = assistant message (with toolUse) + user message (with toolResult)
+        cycles_to_keep = self.max_message_turns
+        messages_to_keep = []
 
+        # Start from the end (most recent)
+        i = len(self.messages) - 1
+        cycles_found = 0
+
+        while i >= 0 and cycles_found < cycles_to_keep:
+            msg = self.messages[i]
+
+            # A complete cycle ends with a user message
+            if msg["role"] == "user":
+                messages_to_keep.insert(0, msg)
+                i -= 1
+
+                # The preceding message should be assistant
+                if i >= 0 and self.messages[i]["role"] == "assistant":
+                    messages_to_keep.insert(0, self.messages[i])
+                    i -= 1
+                    cycles_found += 1
+                else:
+                    # Incomplete cycle, stop here
+                    break
+            else:
+                # Should not happen if conversation is well-formed
+                i -= 1
+
+        # Prepend first user message if it exists and isn't already included
         if self.first_user_message:
-            # Keep first message + last N turns
-            self.messages = [self.first_user_message] + self.messages[-keep_count:]
+            # Check if first message is already in messages_to_keep
+            if not messages_to_keep or messages_to_keep[0] != self.first_user_message:
+                self.messages = [self.first_user_message] + messages_to_keep
+            else:
+                self.messages = messages_to_keep
         else:
-            # Just keep last N turns
-            self.messages = self.messages[-keep_count:]
+            self.messages = messages_to_keep
 
     def create_initial_request(
         self,
