@@ -483,15 +483,18 @@ class BedrockProvider(ComputerUseProvider):
                 }
             })
 
-        # Inject additional instruction as first content block if provided
-        if additional_instruction:
-            tool_result_content.insert(0, {"text": additional_instruction})
-
         # Add tool results as user message
         self.messages.append({
             "role": "user",
             "content": tool_result_content
         })
+
+        # Inject additional instruction as a follow-up user message if provided
+        if additional_instruction:
+            self.messages.append({
+                "role": "user",
+                "content": [{"text": additional_instruction}]
+            })
 
         # Tools configuration - use model-specific tool version
         tools_config = [
