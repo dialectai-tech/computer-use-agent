@@ -41,7 +41,8 @@ class ComputerUseAgent:
         extended_thinking: bool = False,
         thinking_budget: int = 10000,
         use_accessibility_tree: bool = True,
-        two_phase_workflow: bool = False
+        two_phase_workflow: bool = False,
+        max_message_turns: int = 10
     ):
         """Initialize agent.
 
@@ -59,8 +60,14 @@ class ComputerUseAgent:
             thinking_budget: Token budget for extended thinking
             use_accessibility_tree: Use accessibility tree alongside screenshots
             two_phase_workflow: Enable two-phase workflow (search first, then screenshot)
+            max_message_turns: Maximum number of message turns to keep in history
         """
         self.provider = provider
+        self.max_message_turns = max_message_turns
+
+        # Pass max_message_turns to provider if it supports it
+        if hasattr(self.provider, 'max_message_turns'):
+            self.provider.max_message_turns = max_message_turns
         self.display_width = display_width
         self.display_height = display_height
         self.zoom = zoom
@@ -556,8 +563,8 @@ and use the screenshot to find WHERE (coordinates) to interact."""
 
         text_lower = text.lower()
 
-        # Check for explicit transient signal
-        is_transient = "transient" in text_lower
+        # Check for explicit transient signal (TRANSIENT: marker)
+        is_transient = "transient:" in text_lower
 
         # Check for remember signal
         important_info = None

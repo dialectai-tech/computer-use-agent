@@ -20,6 +20,7 @@ class ActionType(Enum):
     WAIT = "wait"
     MOUSE_MOVE = "mouse_move"
     SEARCH = "search"  # Search page content
+    BROWSER_FIND = "browser_find"  # Browser find (Ctrl+F) to navigate to content
 
 
 @dataclass

@@ -110,6 +110,12 @@ console = Console()
     default=False,
     help="Enable two-phase workflow: search first (no screenshot), then action with screenshot (default: disabled)"
 )
+@click.option(
+    "--max-message-turns",
+    type=int,
+    default=lambda: int(os.getenv("MAX_MESSAGE_TURNS", "10")),
+    help="Maximum number of message turns to keep in history (default: 10)"
+)
 def cli(
     url: str,
     prompt: str,
@@ -127,7 +133,8 @@ def cli(
     extended_thinking: bool,
     thinking_budget: int,
     use_accessibility_tree: bool,
-    two_phase_workflow: bool
+    two_phase_workflow: bool,
+    max_message_turns: int
 ):
     """Computer Use Automation - Multi-provider AI agent for browser automation.
 
@@ -223,7 +230,8 @@ def cli(
         extended_thinking=extended_thinking,
         thinking_budget=thinking_budget,
         use_accessibility_tree=use_accessibility_tree,
-        two_phase_workflow=two_phase_workflow
+        two_phase_workflow=two_phase_workflow,
+        max_message_turns=max_message_turns
     )
 
     # Run task

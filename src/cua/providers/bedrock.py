@@ -144,6 +144,8 @@ class BedrockProvider(ComputerUseProvider):
         self.last_response = None
         self.last_tool_uses = []
         self.system_prompt = get_system_prompt()  # Generic system prompt
+        self.first_user_message = None  # Store first user message for context reset
+        self.max_message_turns = 10  # Keep last N message turns (configurable)
 
     def _strip_transient_content(self, text: str) -> str:
         """Remove transient content marked with [transient]...[/transient] tags.
@@ -159,6 +161,41 @@ class BedrockProvider(ComputerUseProvider):
         # Clean up extra whitespace
         text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)
         return text.strip()
+
+    def _is_transient_response(self, text: str) -> bool:
+        """Check if AI explicitly marked this response as transient.
+
+        Args:
+            text: Response text from AI
+
+        Returns:
+            True if response contains TRANSIENT marker
+        """
+        # Check for explicit TRANSIENT: marker at end of response
+        if re.search(r'TRANSIENT:', text, re.IGNORECASE):
+            return True
+        return False
+
+    def _prune_message_history(self):
+        """Prune message history to keep only recent turns + first user message.
+
+        Keeps:
+        - First user message (task description)
+        - Last N message turns (N = max_message_turns)
+        """
+        if len(self.messages) <= self.max_message_turns * 2:
+            return  # No pruning needed
+
+        # Keep first user message + last N turns
+        # Each turn = user message + assistant message (2 messages)
+        keep_count = self.max_message_turns * 2
+
+        if self.first_user_message:
+            # Keep first message + last N turns
+            self.messages = [self.first_user_message] + self.messages[-keep_count:]
+        else:
+            # Just keep last N turns
+            self.messages = self.messages[-keep_count:]
 
     def create_initial_request(
         self,
@@ -224,6 +261,10 @@ class BedrockProvider(ComputerUseProvider):
 
         self.messages = [{"role": "user", "content": content}]
 
+        # Store first user message for context reset
+        if not self.first_user_message:
+            self.first_user_message = self.messages[0]
+
         # Tools configuration - use model-specific tool version
         tools_config = [
             # Custom search tool - MUST be used before computer tool
@@ -244,6 +285,25 @@ class BedrockProvider(ComputerUseProvider):
                         }
                     },
                     "required": ["query"]
+                }
+            },
+            # Browser find tool - use after search to navigate instantly
+            {
+                "name": "browser_find",
+                "description": "Use browser's native find (Ctrl+F) to instantly navigate to and highlight content. MUCH faster than scrolling! Use after search_page_content finds content. Browser will auto-scroll to first match and highlight all matches.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "search_term": {
+                            "type": "string",
+                            "description": "Exact text to find on page. Use unique text from search_page_content results to avoid ambiguity."
+                        },
+                        "close_after": {
+                            "type": "boolean",
+                            "description": "Whether to close find dialog after finding (default: true)"
+                        }
+                    },
+                    "required": ["search_term"]
                 }
             },
             {
@@ -339,6 +399,9 @@ class BedrockProvider(ComputerUseProvider):
         Returns:
             Bedrock Converse API response
         """
+        # Prune message history to keep only recent turns
+        self._prune_message_history()
+
         # Build tool result content for each tool use
         tool_result_content = []
 
@@ -391,6 +454,19 @@ class BedrockProvider(ComputerUseProvider):
                         "source": {"bytes": screenshot_bytes}
                     }
                 })
+            elif tool_name == "browser_find":
+                # Return browser find result with updated screenshot
+                message = action_result.get("message", "") if action_result else "Browser find completed"
+                result_content = [{"text": message}]
+
+                # Add screenshot to show highlighted content
+                screenshot_bytes = base64.b64decode(screenshot)
+                result_content.append({
+                    "image": {
+                        "format": "png",
+                        "source": {"bytes": screenshot_bytes}
+                    }
+                })
             elif tool_name == "bash":
                 # Return command output as text
                 output = action_result.get("output", "") if action_result else ""
@@ -431,6 +507,25 @@ class BedrockProvider(ComputerUseProvider):
                         }
                     },
                     "required": ["query"]
+                }
+            },
+            # Browser find tool - use after search to navigate instantly
+            {
+                "name": "browser_find",
+                "description": "Use browser find (Ctrl+F) to instantly navigate to content. Use after search_page_content.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "search_term": {
+                            "type": "string",
+                            "description": "Exact text to find"
+                        },
+                        "close_after": {
+                            "type": "boolean",
+                            "description": "Whether to close find dialog after finding"
+                        }
+                    },
+                    "required": ["search_term"]
                 }
             },
             {
@@ -556,6 +651,15 @@ class BedrockProvider(ComputerUseProvider):
                     tool_input = tool_use.get('input', {})
                     action = Action(
                         type=ActionType.SEARCH,
+                        params=tool_input,
+                        id=tool_use.get('toolUseId', '')
+                    )
+                    actions.append(action)
+                elif tool_name == "browser_find":
+                    # Handle browser find tool
+                    tool_input = tool_use.get('input', {})
+                    action = Action(
+                        type=ActionType.BROWSER_FIND,
                         params=tool_input,
                         id=tool_use.get('toolUseId', '')
                     )

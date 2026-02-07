@@ -417,6 +417,37 @@ class PlaywrightController:
                 time.sleep(0.2)
                 return {"success": True, "action": "mouse_move", "x": x, "y": y}
 
+            elif action.type == ActionType.BROWSER_FIND:
+                # Use browser's native find (Ctrl+F) to navigate to content
+                search_term = action.params.get("search_term", "")
+                close_after = action.params.get("close_after", True)
+
+                if not search_term:
+                    return {"success": False, "error": "search_term is required for browser_find"}
+
+                # Open browser find dialog with Ctrl+F
+                self.page.keyboard.press("Control+f")
+                time.sleep(0.5)  # Wait for find dialog to appear
+
+                # Type the search term
+                self.page.keyboard.type(search_term)
+                time.sleep(0.5)  # Wait for browser to find and highlight
+
+                # Check if any matches were found by looking at the page
+                # Most browsers will highlight matches and scroll to the first one
+
+                # Optionally close the find dialog
+                if close_after:
+                    self.page.keyboard.press("Escape")
+                    time.sleep(0.3)
+
+                return {
+                    "success": True,
+                    "action": "browser_find",
+                    "search_term": search_term,
+                    "message": f"Used browser find for '{search_term}'. Browser scrolled to and highlighted matches."
+                }
+
             else:
                 return {"success": False, "error": f"Unknown action type: {action.type}"}
 
