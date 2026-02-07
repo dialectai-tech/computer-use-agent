@@ -11,7 +11,7 @@ Agent stopped after 3 iterations with "No actions found, task may be complete" e
 - AI found START button but never clicked it
 - AI only searched, never used computer tool
 
-## ✅ Fixes Applied (10 fixes, multiple commits)
+## ✅ Fixes Applied (11 fixes, multiple commits)
 
 ### Fix 1: Better "No Actions" Handling
 **Commit:** `626869d`
@@ -647,3 +647,113 @@ cua --provider bedrock --model haiku \
 - `src/cua/providers/base.py` (Fix 5)
 - `src/cua/providers/bedrock.py` (Fixes 5, 6, 8, 9)
 - `src/cua/browser/playwright_controller.py` (Fix 6)
+
+### Fix 11: Detect Multi-Step Tasks & Prevent Premature Completion
+**Commit:** `fdad643`
+
+**Problem:** Sonnet model declared "Task completed successfully!" after Step 1 of 30
+- ✅ Completed Step 1 successfully (found BPLXP8, entered code, clicked submit)
+- ❌ Declared "Task completed successfully!" and exited
+- ❌ Still on `step1?version=3` (29 more steps remaining!)
+
+**Test Results:**
+```
+Iteration 11: Type code "BPLXP8"
+Iteration 15: Mark transients (TRANSIENT: Closed popup...)
+System: No tool calls in response → is_task_complete() = True
+System: "✓ Task completed successfully!"
+Final URL: step1?version=3
+Status: Success (FALSE!)
+```
+
+**Root Cause:** System confused "no tool calls" with "task complete"
+- AI finished Step 1, marked transient actions
+- Response had only text (no tool calls)
+- `is_task_complete()` returned True
+- System exited immediately
+
+**This is Different from Fix 4:**
+- Fix 4: AI declared completion without performing actions
+- Fix 11: AI performed actions, but system stopped after one subtask
+
+**Solution: Three-Part Multi-Step Detection**
+
+**Part 1: Verify True Completion**
+Check page content for progress indicators before exiting:
+```python
+# Look for "Step X of Y" or "Task X/Y" patterns
+step_match = re.search(r'Step\s+(\d+)\s+of\s+(\d+)', page_text)
+task_match = re.search(r'Task\s+(\d+)\s*/\s*(\d+)', page_text)
+
+if step_match:
+    current_step, total_steps = int(group(1)), int(group(2))
+    if current_step < total_steps:
+        is_truly_complete = False
+        message = f"Step {current_step} of {total_steps} completed, but {remaining} more remain!"
+```
+
+**Part 2: Continue Instead of Exit**
+If not truly complete, inject reminder and continue:
+```python
+if not is_truly_complete:
+    console.print("⚠️ Step 1 of 30 completed, but 29 more remain!")
+    console.print("Continuing to next step...")
+    
+    reminder = """⚠️ IMPORTANT: Task is NOT complete yet!
+    
+    You MUST continue to the next step. Do NOT stop here.
+    
+    Take a screenshot and proceed with next step."""
+    
+    response = create_continuation_request(..., additional_instruction=reminder)
+    continue  # Don't exit!
+```
+
+**Part 3: Progress Reminders Every 5 Iterations**
+Keep AI aware of overall progress:
+```python
+if iteration % 5 == 0:
+    progress_reminder = f"""📊 PROGRESS CHECK (Iteration {iteration}):
+    Currently on Step {current_step} of {total_steps}.
+    {remaining} more steps to complete.
+    
+    Remember: Keep working through ALL steps until Step {total_steps}."""
+```
+
+**Test Case:**
+
+Before Fix 11:
+```
+Iteration 1-15: Complete Step 1 ✅
+Iteration 15: No tool calls
+System: "Task complete!" → EXIT
+Result: ❌ Stopped at Step 1 of 30
+```
+
+After Fix 11:
+```
+Iteration 1-15: Complete Step 1 ✅
+Iteration 15: No tool calls
+System: Checks page → "Step 1 of 30"
+System: "⚠️ 29 more steps remain! Continuing..."
+AI: Receives reminder
+Iteration 16: Continues to Step 2 ✅
+Iteration 20: Progress reminder "Step 2 of 30" ✅
+...continues through all 30 steps...
+Iteration N: "Step 30 of 30" → TRUE completion ✅
+```
+
+**Expected Impact:**
+- ✅ No premature exits on multi-step tasks
+- ✅ Progress reminders every 5 iterations
+- ✅ Only exits when truly complete (Step 30/30 or Task Z/Z)
+- ✅ Should complete full 30-step challenge!
+- ✅ Works for any "Step X of Y" or "Task X/Y" pattern
+
+**Supported Patterns:**
+- "Step 1 of 30"
+- "Step 5/30"
+- "Task 2 of 10"
+- "Task 7/10"
+- Case-insensitive
+
