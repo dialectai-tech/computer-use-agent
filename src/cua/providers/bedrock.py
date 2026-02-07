@@ -5,8 +5,10 @@ import time
 import base64
 import os
 import boto3
+import re
 
 from cua.providers.base import ComputerUseProvider, Action, ActionType
+from cua.prompts import build_initial_prompt, get_system_prompt, TOOL_USAGE_ESSENTIALS, TWO_PHASE_PROMPT_P2
 
 
 class BedrockProvider(ComputerUseProvider):
@@ -141,6 +143,22 @@ class BedrockProvider(ComputerUseProvider):
         self.messages = []
         self.last_response = None
         self.last_tool_uses = []
+        self.system_prompt = get_system_prompt()  # Generic system prompt
+
+    def _strip_transient_content(self, text: str) -> str:
+        """Remove transient content marked with [transient]...[/transient] tags.
+
+        Args:
+            text: Text potentially containing transient tags
+
+        Returns:
+            Text with transient sections removed
+        """
+        # Remove transient sections
+        text = re.sub(r'\[transient\].*?\[/transient\]', '', text, flags=re.DOTALL | re.IGNORECASE)
+        # Clean up extra whitespace
+        text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)
+        return text.strip()
 
     def create_initial_request(
         self,
@@ -157,136 +175,25 @@ class BedrockProvider(ComputerUseProvider):
             prompt: User's task description
             screenshot: Base64-encoded screenshot (optional)
             accessibility_tree: Accessibility tree from browser (optional)
+            page_text: Extracted page text (optional)
             display_width: Display width in pixels
             display_height: Display height in pixels
 
         Returns:
             Bedrock Converse API response
         """
-        # Build message content - START WITH ACCESSIBILITY TREE INSTRUCTIONS!
-        autonomous_instructions = """
-
-**AUTONOMOUS AGENT MODE:**
-You are an AUTONOMOUS agent. Do NOT ask the user questions or wait for input. Take actions, observe results via screenshots, and continue until the task is complete. After EVERY action, take a screenshot to see the result, then decide your next action.
-
-If you need to see the current state, use the screenshot action - never ask the user."""
-
-        # CRITICAL: Put accessibility tree guide FIRST if available
-        hybrid_guide = ""
-        if accessibility_tree and not accessibility_tree.get("error") or page_text:
-            hybrid_guide = """
-
-═══════════════════════════════════════════════════════════════
-🚨 CRITICAL: YOU HAVE A SEARCH TOOL! 🚨
-═══════════════════════════════════════════════════════════════
-
-⚠️ STOP! You have a **search_page_content** tool that searches ALL page content!
-
-**MANDATORY FIRST STEP:**
-BEFORE taking ANY computer action (click, type, scroll), you MUST use:
-**search_page_content(query="what you're looking for", search_type="both")**
-
-**EXAMPLE - Finding a 6-character code (THE WRONG WAY):**
-  ❌ "Let me scroll down to find the code"
-  ❌ "Let me click around looking for it"
-  ❌ [wastes 40 iterations, finds nothing, gives up]
-
-**EXAMPLE - Finding a 6-character code (THE RIGHT WAY):**
-  ✅ Use: search_page_content(query="[A-Z0-9]{6}", search_type="text")
-  ✅ Tool returns: "Found code AJAF5H at line 23"
-  ✅ Look at screenshot to find where "AJAF5H" appears visually
-  ✅ Click input field, type "AJAF5H", click Submit
-  ✅ Success in 3 iterations!
-
-**HOW TO USE THE SEARCH TOOL:**
-
-1. **Search for codes:**
-   search_page_content(query="[A-Z0-9]{6}", search_type="text")
-
-2. **Search for buttons:**
-   search_page_content(query="Submit", search_type="tree")
-
-3. **Search for any text:**
-   search_page_content(query="Enter code", search_type="both")
-
-4. **The tool returns:**
-   - Exact line numbers where text was found
-   - Element information from accessibility tree
-   - Summary of all matches
-
-**MANDATORY WORKFLOW:**
-
-1. **FIRST: Use search_page_content tool**
-   - Search for what you need (codes, buttons, text)
-   - Tool searches ALL page content instantly
-   - Returns exact locations and matches
-
-2. **SECOND: Use screenshot for COORDINATES ONLY**
-   - Look at screenshot to find visual position
-   - Get [x, y] pixel coordinates
-   - Use computer tool to click/type at those coordinates
-
-3. **THIRD: Verify and continue**
-   - Check result
-   - Repeat with next task
-
-**WHY THIS WORKS:**
-- search_page_content = Searches ALL content instantly (no scrolling!)
-- Screenshot = Visual positioning only (find coordinates)
-- Computer tool = Execute clicks/typing at coordinates
-
-**NEVER DO THIS:**
-❌ Scroll without searching first
-❌ Click randomly hoping to find things
-❌ Ignore the search tool
-❌ Use screenshot to "look for" content (use search tool instead!)
-
-**ALWAYS DO THIS:**
-✅ Use search_page_content FIRST
-✅ Use screenshot SECOND (for coordinates)
-✅ Use computer tool THIRD (for actions)
-✅ Be efficient - search finds everything instantly!
-
-═══════════════════════════════════════════════════════════════
-"""
-
-        tool_usage_guide = """
-
-**CRITICAL - Tool Usage:**
-When using the computer tool with click actions, you MUST provide coordinates:
-- ✅ CORRECT: {"action": "left_click", "coordinate": [640, 480]}
-- ❌ WRONG: {"action": "click"} (missing coordinate!)
-- ❌ WRONG: {"action": "left_click"} (missing coordinate!)
-
-Look at the screenshot to find the visual position of the element you want to click, then provide its [x, y] pixel coordinates.
-
-**SCROLLING IN MODALS/DIALOGS:**
-When you need to scroll within a modal, dialog, or any scrollable container:
-1. Position your mouse INSIDE the modal/container area (provide coordinates within the modal bounds)
-2. Use the scroll action with those coordinates
-3. The system will automatically find and scroll the scrollable container at that position
-4. Take a screenshot after scrolling to verify the modal content scrolled
-
-Example: If a modal is centered at x=500, y=300, use {"action": "scroll", "coordinate": [500, 300], "scroll_direction": "down"}
-
-**KEYBOARD SHORTCUTS AND NAVIGATION:**
-You have access to powerful keyboard shortcuts for efficient navigation:
-- **Space** - Scroll down one page viewport (fastest way to scan through content)
-- **Shift+Space** - Scroll up one page viewport
-- **Home** - Jump to top of page/element instantly
-- **End** - Jump to bottom of page/element instantly
-- **Ctrl+Home** - Jump to absolute beginning of page
-- **Ctrl+End** - Jump to absolute end of page
-- **PageDown** - Scroll down one page
-- **PageUp** - Scroll up one page
-
-**Use these shortcuts instead of multiple scroll actions!** For example:
-- To scan a long page: Press Space repeatedly instead of scrolling
-- To quickly return to top: Use Home or Ctrl+Home instead of scrolling up many times
-- To jump to bottom: Use End or Ctrl+End instead of scrolling down many times"""
+        # Build concise, generic prompt
+        has_search_tool = page_text is not None or (accessibility_tree and not accessibility_tree.get("error"))
+        full_prompt = build_initial_prompt(
+            user_prompt=prompt,
+            has_search_tool=has_search_tool,
+            has_page_text=bool(page_text),
+            two_phase=False
+        )
 
         # Build message content for Converse API format
-        content = [{"text": prompt + autonomous_instructions + hybrid_guide + tool_usage_guide}]
+        # Add system prompt as first message (only text, not in content blocks)
+        content = [{"text": self.system_prompt + "\n\n" + full_prompt}]
 
         # Add accessibility tree if available (FIRST - so AI reads it before image)
         if accessibility_tree and not accessibility_tree.get("error"):
@@ -681,7 +588,7 @@ You have access to powerful keyboard shortcuts for efficient navigation:
             response: Bedrock Converse API response
 
         Returns:
-            Text content from response
+            Text content from response (with transient content stripped)
         """
         text_parts = []
 
@@ -692,7 +599,10 @@ You have access to powerful keyboard shortcuts for efficient navigation:
             if 'text' in content_block:
                 text_parts.append(content_block['text'])
 
-        return " ".join(text_parts)
+        full_text = " ".join(text_parts)
+
+        # Strip transient content before returning
+        return self._strip_transient_content(full_text)
 
     def _map_action_type(self, action_str: str) -> Optional[ActionType]:
         """Map action string to ActionType enum.

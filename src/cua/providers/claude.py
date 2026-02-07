@@ -2,9 +2,11 @@
 
 from typing import Any, Dict, List, Optional
 import time
+import re
 import anthropic
 
 from cua.providers.base import ComputerUseProvider, Action, ActionType
+from cua.prompts import build_initial_prompt, get_system_prompt, TOOL_USAGE_ESSENTIALS, TWO_PHASE_PROMPT_P2
 
 
 class ClaudeProvider(ComputerUseProvider):
@@ -21,6 +23,22 @@ class ClaudeProvider(ComputerUseProvider):
         self.client = anthropic.Anthropic(api_key=api_key)
         self.messages = []
         self.last_response = None
+        self.system_prompt = get_system_prompt()  # Generic system prompt
+
+    def _strip_transient_content(self, text: str) -> str:
+        """Remove transient content marked with [transient]...[/transient] tags.
+
+        Args:
+            text: Text potentially containing transient tags
+
+        Returns:
+            Text with transient sections removed
+        """
+        # Remove transient sections
+        text = re.sub(r'\[transient\].*?\[/transient\]', '', text, flags=re.DOTALL | re.IGNORECASE)
+        # Clean up extra whitespace
+        text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)
+        return text.strip()
 
     def create_initial_request(
         self,
@@ -37,118 +55,41 @@ class ClaudeProvider(ComputerUseProvider):
             prompt: User's task description
             screenshot: Base64-encoded screenshot (optional)
             accessibility_tree: Accessibility tree from browser (optional)
+            page_text: Extracted page text (optional)
             display_width: Display width in pixels
             display_height: Display height in pixels
 
         Returns:
             Claude API response
         """
-        # Build initial message content - START WITH ACCESSIBILITY TREE INSTRUCTIONS!
-        autonomous_instructions = """
+        # Build concise, generic prompt
+        has_search_tool = page_text is not None or (accessibility_tree and not accessibility_tree.get("error"))
+        full_prompt = build_initial_prompt(
+            user_prompt=prompt,
+            has_search_tool=has_search_tool,
+            has_page_text=bool(page_text),
+            two_phase=False
+        )
 
-**AUTONOMOUS AGENT MODE:**
-You are an AUTONOMOUS agent. Do NOT ask the user for input or wait for them to "show you" anything. You can take screenshots yourself to see the current state. After EVERY action, take a screenshot to observe the result, then continue with your next action. Keep working until the task is FULLY complete."""
+        # Build message content with system prompt + user prompt
+        content = [{"type": "text", "text": self.system_prompt + "\n\n" + full_prompt}]
 
-        # CRITICAL: Put accessibility tree guide FIRST if available
-        hybrid_guide = ""
-        if accessibility_tree and not accessibility_tree.get("error"):
-            hybrid_guide = """
-
-═══════════════════════════════════════════════════════════════
-🚨 CRITICAL: YOU HAVE AN ACCESSIBILITY TREE - USE IT FIRST! 🚨
-═══════════════════════════════════════════════════════════════
-
-Before you do ANYTHING else (especially scrolling), you MUST:
-
-**STEP 1: READ THE ACCESSIBILITY TREE BELOW**
-The tree shows ALL page content instantly - codes, buttons, text, everything!
-You do NOT need to scroll to find content - it's already in the tree!
-
-**EXAMPLE - Finding a 6-character code:**
-Instead of scrolling for 40 iterations like this:
-  ❌ "Let me scroll down to find the code"
-  ❌ "Let me scroll more to look for the code"
-  ❌ "Still scrolling to find the code..."
-  ❌ [wastes 40 iterations and fails]
-
-Do this in 1 iteration:
-  ✅ "I'll check the accessibility tree for text containing a 6-character code"
-  ✅ Found in tree: {"role": "text", "name": "Your code: AJAF5H"}
-  ✅ "The code is AJAF5H, now I'll enter it"
-  ✅ [Success in 3 iterations!]
-
-**MANDATORY WORKFLOW:**
-1. FIRST: Search the accessibility tree for what you need
-   - Looking for a code? Search tree for text nodes with 6-char codes
-   - Looking for a button? Search tree for button with that name
-   - Looking for an input? Search tree for textbox elements
-
-2. SECOND: Use screenshot ONLY for coordinates
-   - After finding element in tree, look at screenshot
-   - Find its visual position, get [x, y] coordinates
-   - Click at those coordinates
-
-**THE ACCESSIBILITY TREE:**
-- Shows EVERYTHING on the page, even if scrolled out of view
-- Contains all text content, button names, input fields
-- Reveals complete page structure and hierarchy
-- Is much faster than scrolling through screenshots
-
-**NEVER DO THIS:**
-❌ Scroll up and down looking for content
-❌ Click random buttons hoping to reveal content
-❌ Ignore the accessibility tree and only use screenshots
-❌ Scroll through 100 sections of filler content
-
-**ALWAYS DO THIS:**
-✅ Read accessibility tree FIRST to find what you need
-✅ Use screenshot for coordinates only
-✅ Be efficient - find content in tree instantly
-
-═══════════════════════════════════════════════════════════════
-"""
-
-        tool_usage_guide = """
-
-**CRITICAL - Tool Usage:**
-When using click actions, you MUST provide coordinates from the screenshot:
-- ✅ CORRECT: {"action": "left_click", "coordinate": [640, 480]}
-- ❌ WRONG: {"action": "left_click"} (missing coordinate!)
-
-Look at the screenshot to find where the element is, then provide [x, y] pixel coordinates.
-
-**SCROLLING IN MODALS/DIALOGS:**
-When you need to scroll within a modal, dialog, or any scrollable container:
-1. Position your mouse INSIDE the modal/container area (provide coordinates within the modal bounds)
-2. Use the scroll action with those coordinates
-3. The system will automatically find and scroll the scrollable container at that position
-4. Take a screenshot after scrolling to verify the modal content scrolled
-
-Example: If a modal is centered at x=500, y=300, use {"action": "scroll", "coordinate": [500, 300]}
-
-**KEYBOARD SHORTCUTS AND NAVIGATION:**
-You have access to powerful keyboard shortcuts for efficient navigation:
-- **Space** - Scroll down one page viewport (fastest way to scan through content)
-- **Shift+Space** - Scroll up one page viewport
-- **Home** - Jump to top of page/element instantly
-- **End** - Jump to bottom of page/element instantly
-- **Ctrl+Home** - Jump to absolute beginning of page
-- **Ctrl+End** - Jump to absolute end of page
-- **PageDown** - Scroll down one page
-- **PageUp** - Scroll up one page
-
-**Use these shortcuts instead of multiple scroll actions!** For example:
-- To scan a long page: Press Space repeatedly instead of scrolling
-- To quickly return to top: Use Home or Ctrl+Home instead of scrolling up many times
-- To jump to bottom: Use End or Ctrl+End instead of scrolling down many times"""
-
-        content = [{"type": "text", "text": prompt + autonomous_instructions + hybrid_guide + tool_usage_guide}]
-
-        # Add accessibility tree if available
+        # Add accessibility tree if available (FIRST - so AI reads it before image)
         if accessibility_tree and not accessibility_tree.get("error"):
             import json
-            tree_text = f"\n\n**Accessibility Tree:**\n```json\n{json.dumps(accessibility_tree, indent=2)}\n```"
+            tree_text = f"\n\n**Accessibility Tree (Page Structure):**\n```json\n{json.dumps(accessibility_tree, indent=2)}\n```\n"
             content.append({"type": "text", "text": tree_text})
+
+        # Add page text if available (SECOND - full text content)
+        if page_text:
+            # Truncate if too long to avoid token explosion
+            max_text_length = 10000  # ~2500 tokens
+            truncated_text = page_text[:max_text_length]
+            if len(page_text) > max_text_length:
+                truncated_text += f"\n\n[... text truncated, {len(page_text) - max_text_length} more characters ...]"
+
+            text_section = f"\n\n**Page Text (All Visible Text):**\n```\n{truncated_text}\n```\n"
+            content.append({"type": "text", "text": text_section})
 
         if screenshot:
             screenshot_block = {
@@ -409,13 +350,16 @@ You have access to powerful keyboard shortcuts for efficient navigation:
             response: Claude API response
 
         Returns:
-            Text content from response
+            Text content from response (with transient content stripped)
         """
         text_parts = []
         for block in response.content:
             if block.type == "text":
                 text_parts.append(block.text)
-        return " ".join(text_parts)
+        full_text = " ".join(text_parts)
+
+        # Strip transient content before returning
+        return self._strip_transient_content(full_text)
 
     def _map_action_type(self, action_str: str) -> Optional[ActionType]:
         """Map Claude action string to ActionType enum.

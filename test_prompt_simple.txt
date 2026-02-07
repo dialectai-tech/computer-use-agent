@@ -1,0 +1,27 @@
+Navigate to the webpage and complete the browser navigation challenge. This webpage contains a multi-step challenge with codes, buttons, inputs, modals, and sequential tasks.
+
+Strategy:
+1. SEARCH FIRST: Use search_page_content tool extensively before taking any actions
+2. Find all 6-character codes on the page using search: \b[A-Z0-9]{6}\b
+3. Find all buttons, inputs, and interactive elements using search
+4. Build a complete action plan based on search results
+5. Then use the screenshot to get coordinates and execute actions
+6. Handle modals/popups: search their content, extract codes, interact as needed
+7. Mark transient content with [transient] tags, important findings with [remember] tags
+8. Complete all steps in the correct sequence
+9. Verify each action before proceeding to the next
+
+Key behaviors:
+- Search BEFORE scrolling or clicking randomly
+- Read accessibility tree and page text to find all content instantly
+- Use screenshot ONLY for finding visual coordinates [x, y]
+- Be methodical and systematic
+- Verify each step's success before continuing
+- Report progress clearly
+
+Success criteria:
+- All codes found and collected
+- All required interactions completed
+- All inputs filled correctly
+- Final submission successful
+- Complete in <20 iterations

@@ -9,6 +9,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from cua.providers.base import ComputerUseProvider, ActionType
 from cua.browser.playwright_controller import PlaywrightController
 from cua.tools.search_tool import SearchTool
+from cua.utils.logger import AgentLogger
 
 
 @dataclass
@@ -74,6 +75,7 @@ class ComputerUseAgent:
         self.two_phase_workflow = two_phase_workflow
         self.console = Console()
         self.browser: Optional[PlaywrightController] = None
+        self.logger: Optional[AgentLogger] = None  # Will be initialized when task starts
 
         # Context management: track screenshots and actions for hybrid approach
         self.screenshot_history = []  # List of (screenshot, action_type, important_info)
@@ -137,6 +139,12 @@ class ComputerUseAgent:
                 video_dir=self.video_dir
             )
             self.browser.start()
+
+            # Initialize logger
+            from datetime import datetime
+            session_name = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            self.logger = AgentLogger(session_name=session_name)
+            self.console.print(f"[dim]Logging to: {self.logger.get_log_path()}[/dim]")
 
             # Navigate to URL
             self.console.print(f"[yellow]Navigating to {url}...[/yellow]")
@@ -221,6 +229,20 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                     total_time = time.time() - start_time
                     page_info = self.browser.get_page_info()
 
+                    # Log final success
+                    if self.logger:
+                        summary = {
+                            "success": True,
+                            "iterations": iteration,
+                            "total_time": total_time,
+                            "final_url": page_info.get("url"),
+                            "stats": self.provider.stats.to_dict(),
+                            "two_phase_workflow": self.two_phase_workflow,
+                            "extended_thinking": self.extended_thinking,
+                            "accessibility_tree_enabled": self.use_accessibility_tree,
+                        }
+                        self.logger.log_summary(summary)
+
                     return TaskResult(
                         success=True,
                         iterations=iteration,
@@ -286,6 +308,12 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                 # Two-phase workflow: Check if we need to transition from phase 1 to phase 2
                 if self.two_phase_workflow and self.current_phase == 1 and search_results:
                     self.console.print(f"\n[cyan]→ Transitioning to Phase 2 (Action with Screenshot)[/cyan]")
+                    if self.logger:
+                        self.logger.log_phase_transition(
+                            from_phase=1,
+                            to_phase=2,
+                            reason="Search completed, transitioning to action phase with screenshot"
+                        )
                     self.current_phase = 2
 
                     # Now send screenshot with phase 2 prompt
@@ -370,6 +398,32 @@ and use the screenshot to find WHERE (coordinates) to interact."""
                 non_transient_count = sum(1 for item in self.screenshot_history if not item.get("transient", False))
                 self.console.print(f"  [dim]Context: {len(self.screenshot_history)} screenshots ({non_transient_count} important)[/dim]")
 
+                # Log this iteration
+                if self.logger:
+                    actions_taken = [self._format_action(action) for action in actions]
+                    action_results_list = []
+                    if search_results:
+                        for _, sr in search_results:
+                            action_results_list.append(sr.get('summary', 'Search completed'))
+
+                    context_info = {
+                        "phase": self.current_phase if self.two_phase_workflow else "normal",
+                        "screenshots_in_context": len(self.screenshot_history),
+                        "non_transient_screenshots": non_transient_count,
+                        "input_tokens": self.provider.stats.total_input_tokens,
+                        "output_tokens": self.provider.stats.total_output_tokens,
+                        "api_calls": self.provider.stats.total_api_calls,
+                    }
+
+                    self.logger.log_iteration(
+                        iteration=iteration,
+                        prompt_sent=prompt if iteration == 1 else "(continuation with screenshot + a11y tree + page text)",
+                        response_received=response_text,
+                        actions_taken=actions_taken,
+                        action_results=action_results_list,
+                        context_info=context_info
+                    )
+
                 # Continue conversation (only with recent screenshots in context)
                 # Pass search results if any
                 response = self.provider.create_continuation_request(
@@ -427,6 +481,20 @@ and use the screenshot to find WHERE (coordinates) to interact."""
             )
 
         finally:
+            # Log session summary
+            if self.logger:
+                summary = {
+                    "success": False,  # Will be overridden if success
+                    "iterations": iteration,
+                    "total_time": time.time() - start_time,
+                    "stats": self.provider.stats.to_dict() if hasattr(self.provider, 'stats') else None,
+                    "two_phase_workflow": self.two_phase_workflow,
+                    "extended_thinking": self.extended_thinking,
+                    "accessibility_tree_enabled": self.use_accessibility_tree,
+                }
+                self.logger.log_summary(summary)
+                self.console.print(f"[dim]Full logs saved to: {self.logger.get_log_path()}[/dim]")
+
             # Clean up and save video
             if self.browser:
                 self.console.print("\n[yellow]Stopping browser...[/yellow]")
