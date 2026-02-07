@@ -615,3 +615,222 @@ class PlaywrightController:
 
         # Return original key if no mapping found (for letters, numbers, etc.)
         return key
+
+    # ============================================================================
+    # DOM Manipulation Methods (Selector-based Actions)
+    # ============================================================================
+
+    def click_selector(self, selector: str) -> dict:
+        """Click element by CSS selector.
+
+        Args:
+            selector: CSS selector string
+
+        Returns:
+            Dictionary with action result
+        """
+        if not self.page:
+            raise RuntimeError("Browser not started. Call start() first.")
+
+        try:
+            self.page.click(selector, timeout=5000)
+            time.sleep(0.5)
+            return {
+                "success": True,
+                "action": "click_selector",
+                "selector": selector
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "action": "click_selector",
+                "selector": selector,
+                "error": str(e)
+            }
+
+    def fill_selector(self, selector: str, text: str) -> dict:
+        """Fill input element by CSS selector.
+
+        Args:
+            selector: CSS selector string
+            text: Text to fill
+
+        Returns:
+            Dictionary with action result
+        """
+        if not self.page:
+            raise RuntimeError("Browser not started. Call start() first.")
+
+        try:
+            self.page.fill(selector, text, timeout=5000)
+            time.sleep(0.3)
+            return {
+                "success": True,
+                "action": "fill_selector",
+                "selector": selector,
+                "text": text
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "action": "fill_selector",
+                "selector": selector,
+                "error": str(e)
+            }
+
+    def get_element_info(self, selector: str) -> dict:
+        """Get element information without taking action.
+
+        Args:
+            selector: CSS selector string
+
+        Returns:
+            Dictionary with element information
+        """
+        if not self.page:
+            raise RuntimeError("Browser not started. Call start() first.")
+
+        try:
+            result = self.page.evaluate("""
+                (selector) => {
+                    const el = document.querySelector(selector);
+                    if (!el) return null;
+
+                    const rect = el.getBoundingClientRect();
+                    return {
+                        exists: true,
+                        visible: el.offsetParent !== null,
+                        text: el.textContent || el.innerText || '',
+                        value: el.value || '',
+                        tag: el.tagName.toLowerCase(),
+                        type: el.type || '',
+                        placeholder: el.placeholder || '',
+                        disabled: el.disabled || false,
+                        rect: {
+                            x: rect.x,
+                            y: rect.y,
+                            width: rect.width,
+                            height: rect.height
+                        }
+                    };
+                }
+            """, selector)
+
+            if result is None:
+                return {
+                    "success": False,
+                    "exists": False,
+                    "selector": selector,
+                    "error": "Element not found"
+                }
+
+            return {
+                "success": True,
+                "selector": selector,
+                **result
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "selector": selector,
+                "error": str(e)
+            }
+
+    def find_selectors_by_text(self, text: str, limit: int = 10) -> dict:
+        """Find CSS selectors for elements containing specific text.
+
+        Args:
+            text: Text to search for
+            limit: Maximum number of results to return
+
+        Returns:
+            Dictionary with list of selectors
+        """
+        if not self.page:
+            raise RuntimeError("Browser not started. Call start() first.")
+
+        try:
+            results = self.page.evaluate("""
+                ([text, limit]) => {
+                    // Find all elements containing the text
+                    const allElements = Array.from(document.querySelectorAll('*'));
+                    const matches = [];
+
+                    for (const el of allElements) {
+                        // Skip script, style, and non-visible elements
+                        if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
+                        if (el.offsetParent === null) continue;
+
+                        const textContent = (el.textContent || el.innerText || '').trim();
+                        const value = el.value || '';
+                        const placeholder = el.placeholder || '';
+
+                        if (textContent.includes(text) || value.includes(text) || placeholder.includes(text)) {
+                            // Generate CSS selector
+                            let selector = el.tagName.toLowerCase();
+
+                            if (el.id) {
+                                selector = '#' + el.id;
+                            } else if (el.className) {
+                                const classes = el.className.split(' ').filter(c => c.trim());
+                                if (classes.length > 0) {
+                                    selector += '.' + classes[0];
+                                }
+                            }
+
+                            // Get position for uniqueness
+                            const rect = el.getBoundingClientRect();
+
+                            matches.push({
+                                selector: selector,
+                                tag: el.tagName.toLowerCase(),
+                                text: textContent.substring(0, 100),
+                                value: value.substring(0, 50),
+                                x: Math.round(rect.x),
+                                y: Math.round(rect.y)
+                            });
+
+                            if (matches.length >= limit) break;
+                        }
+                    }
+
+                    return matches;
+                }
+            """, [text, limit])
+
+            return {
+                "success": True,
+                "text": text,
+                "count": len(results),
+                "matches": results
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "text": text,
+                "error": str(e)
+            }
+
+    def evaluate_js(self, script: str) -> dict:
+        """Execute JavaScript in the page context.
+
+        Args:
+            script: JavaScript code to execute
+
+        Returns:
+            Dictionary with execution result
+        """
+        if not self.page:
+            raise RuntimeError("Browser not started. Call start() first.")
+
+        try:
+            result = self.page.evaluate(script)
+            return {
+                "success": True,
+                "result": result
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
