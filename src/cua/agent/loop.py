@@ -140,11 +140,14 @@ class ComputerUseAgent:
         if hasattr(response, 'input_tokens'):
             breakdown.total_input_tokens = response.input_tokens
             breakdown.total_output_tokens = response.output_tokens
+        elif hasattr(self.provider, 'stats') and self.provider.stats:
+            # Fallback: get from provider stats
+            breakdown.total_input_tokens = self.provider.stats.input_tokens
+            breakdown.total_output_tokens = self.provider.stats.output_tokens
         else:
-            # Fallback: estimate from provider stats
-            stats = self.provider.get_stats()
-            breakdown.total_input_tokens = stats.input_tokens
-            breakdown.total_output_tokens = stats.output_tokens
+            # Last resort: estimate based on content
+            breakdown.total_input_tokens = 0
+            breakdown.total_output_tokens = 0
 
         # Estimate breakdown (rough approximations)
         # System prompt is roughly 5000 tokens
