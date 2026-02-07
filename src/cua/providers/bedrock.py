@@ -189,11 +189,17 @@ class BedrockProvider(ComputerUseProvider):
         so the conversation ends with an assistant message (with toolUse blocks).
         We need to keep this final assistant message along with the previous cycles.
         """
+        # DEBUG: Log before pruning
+        print(f"[DEBUG PRUNING] Before: {len(self.messages)} messages")
+        print(f"[DEBUG PRUNING] max_message_turns: {self.max_message_turns}")
+
         # Calculate threshold for pruning
         # Need at least first message + (max_message_turns * 2) messages
         min_messages = 1 + (self.max_message_turns * 2)
+        print(f"[DEBUG PRUNING] min_messages threshold: {min_messages}")
 
         if len(self.messages) <= min_messages:
+            print(f"[DEBUG PRUNING] Skipping pruning (not enough messages)")
             return  # No pruning needed
 
         # Work backwards to find N complete cycles
@@ -233,15 +239,25 @@ class BedrockProvider(ComputerUseProvider):
                 # Unexpected assistant message, skip it
                 i -= 1
 
+        # DEBUG: Log pruning results
+        print(f"[DEBUG PRUNING] Cycles found: {cycles_found}")
+        print(f"[DEBUG PRUNING] messages_to_keep: {len(messages_to_keep)}")
+
         # Prepend first user message if it exists and isn't already included
         if self.first_user_message:
             # Check if first message is already in messages_to_keep
             if not messages_to_keep or messages_to_keep[0] != self.first_user_message:
                 self.messages = [self.first_user_message] + messages_to_keep
+                print(f"[DEBUG PRUNING] Added first_user_message (not in kept messages)")
             else:
                 self.messages = messages_to_keep
+                print(f"[DEBUG PRUNING] First message already in kept messages")
         else:
             self.messages = messages_to_keep
+            print(f"[DEBUG PRUNING] No first_user_message stored")
+
+        print(f"[DEBUG PRUNING] After: {len(self.messages)} messages")
+        print(f"[DEBUG PRUNING] ---")
 
     def reset_context(
         self,

@@ -10,3 +10,6 @@ recordings/**
 screenshots/**
 tmp/**
 logs/**
+*.pyc
+*.pyo
+*.log

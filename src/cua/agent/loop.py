@@ -96,6 +96,7 @@ class ComputerUseAgent:
         self.console = Console()
         self.browser: Optional[PlaywrightController] = None
         self.logger: Optional[AgentLogger] = None  # Will be initialized when task starts
+        self.last_page_url: Optional[str] = None  # Track URL to detect page navigation
 
         # Token statistics tracking
         self.cumulative_token_stats = CumulativeTokenStats()
@@ -309,8 +310,11 @@ class ComputerUseAgent:
             if self.use_accessibility_tree:
                 accessibility_tree = self.browser.get_accessibility_tree()
 
-            # Get page text for searching/analysis
-            page_text = self.browser.get_page_text()
+            # Get page text for initial page load
+            page_text = self.browser.get_page_text() if self.use_page_text else None
+            # Initialize last_page_url tracker
+            if self.use_page_text:
+                self.last_page_url = self.browser.get_page_info().get('url', '')
 
             # Track initial screenshot
             self.screenshot_history.append({
@@ -450,7 +454,14 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                         screenshot = self.browser.take_screenshot()
                         self.provider.stats.add_screenshot()
                         accessibility_tree = self.browser.get_accessibility_tree() if self.use_accessibility_tree else None
-                        page_text = self.browser.get_page_text()
+
+                        # Get page text only if URL changed (page navigation)
+                        page_text = None
+                        if self.use_page_text:
+                            current_url = self.browser.get_page_info().get('url', '')
+                            if current_url != self.last_page_url:
+                                page_text = self.browser.get_page_text()
+                                self.last_page_url = current_url
 
                         # Build reminder message
                         progress_reminder = f"""⚠️ IMPORTANT: Task is NOT complete yet!
@@ -503,7 +514,14 @@ Take a screenshot, analyze the current state, and proceed with the next step of 
 
                     # Get current page state
                     accessibility_tree = self.browser.get_accessibility_tree() if self.use_accessibility_tree else None
-                    page_text = self.browser.get_page_text()
+
+                    # Get page text only if URL changed (page navigation)
+                    page_text = None
+                    if self.use_page_text:
+                        current_url = self.browser.get_page_info().get('url', '')
+                        if current_url != self.last_page_url:
+                            page_text = self.browser.get_page_text()
+                            self.last_page_url = current_url
 
                     # Build explicit instruction for retry
                     retry_instruction = f"""⚠️ NO TOOL CALLS DETECTED - You provided only text, no actions!
@@ -703,7 +721,14 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                     accessibility_tree = None
                     if self.use_accessibility_tree:
                         accessibility_tree = self.browser.get_accessibility_tree()
-                    page_text = self.browser.get_page_text()
+
+                    # Get page text only if URL changed (page navigation)
+                    page_text = None
+                    if self.use_page_text:
+                        current_url = self.browser.get_page_info().get('url', '')
+                        if current_url != self.last_page_url:
+                            page_text = self.browser.get_page_text()
+                            self.last_page_url = current_url
 
                     # Build phase 2 prompt with search results
                     search_summary = "\n".join([f"- {r[1].get('summary', '')}" for r in search_results])
@@ -760,8 +785,16 @@ WRONG: Calling browser_find without search_term parameter
                 if self.use_accessibility_tree:
                     accessibility_tree = self.browser.get_accessibility_tree()
 
-                # Get page text for searching/analysis
-                page_text = self.browser.get_page_text()
+                # Get page text ONLY when page navigation occurs (URL changed)
+                # This avoids sending the same page text repeatedly
+                page_text = None
+                if self.use_page_text:
+                    current_url = self.browser.get_page_info().get('url', '')
+                    if current_url != self.last_page_url:
+                        page_text = self.browser.get_page_text()
+                        self.last_page_url = current_url
+                        self.console.print(f"  [dim]📄 Page navigated to: {current_url[:60]}... (fetching page text)[/dim]")
+                    # else: page_text stays None - no navigation, don't re-send
 
                 # Get response text and extract memory signals
                 response_text = self.provider.get_response_text(response)
