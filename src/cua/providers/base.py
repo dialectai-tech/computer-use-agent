@@ -165,7 +165,8 @@ class ComputerUseProvider(ABC):
         search_results: Optional[List] = None,
         action_result: Optional[Dict[str, Any]] = None,
         display_width: int = 1024,
-        display_height: int = 768
+        display_height: int = 768,
+        additional_instruction: Optional[str] = None
     ) -> Any:
         """Create continuation request with tool results.
 
@@ -177,6 +178,7 @@ class ComputerUseProvider(ABC):
             action_result: Result from previous action execution
             display_width: Display width in pixels
             display_height: Display height in pixels
+            additional_instruction: Additional instruction/prompt to inject (optional)
 
         Returns:
             API response object

@@ -383,7 +383,8 @@ class BedrockProvider(ComputerUseProvider):
         search_results: Optional[List] = None,
         action_result: Optional[Dict[str, Any]] = None,
         display_width: int = 1024,
-        display_height: int = 768
+        display_height: int = 768,
+        additional_instruction: Optional[str] = None
     ) -> Any:
         """Create continuation request with tool results.
 
@@ -395,6 +396,7 @@ class BedrockProvider(ComputerUseProvider):
             action_result: Result from previous action execution
             display_width: Display width in pixels
             display_height: Display height in pixels
+            additional_instruction: Additional instruction/prompt to inject (optional)
 
         Returns:
             Bedrock Converse API response
@@ -479,6 +481,13 @@ class BedrockProvider(ComputerUseProvider):
                     "toolUseId": tool_id,
                     "content": result_content
                 }
+            })
+
+        # Inject additional instruction if provided (before tool results)
+        if additional_instruction:
+            self.messages.append({
+                "role": "user",
+                "content": [{"text": additional_instruction}]
             })
 
         # Add tool results as user message

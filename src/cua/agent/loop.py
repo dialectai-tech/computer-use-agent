@@ -416,10 +416,11 @@ Required workflow:
                         page_text=page_text,
                         search_results=search_results,
                         display_width=self.display_width,
-                        display_height=self.display_height
+                        display_height=self.display_height,
+                        additional_instruction=phase2_prompt  # Send Phase 2 instructions to AI
                     )
 
-                    # Add phase 2 prompt as context
+                    # Show phase 2 prompt in console for user visibility
                     self.console.print(f"[dim]{phase2_prompt}[/dim]\n")
 
                     # Continue to next iteration with phase 2 response
