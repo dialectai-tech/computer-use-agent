@@ -26,7 +26,14 @@ You MUST explicitly mark transient actions at the END of your response:
 
 **Important Findings:**
 - Mark codes, credentials, or key info with [remember]...[/remember] tags
-- These will be preserved while transient content is removed to save tokens"""
+- These will be preserved while transient content is removed to save tokens
+
+**Task Completion Criteria:**
+CRITICAL: Do NOT declare a task complete until you have ACTUALLY PERFORMED the required actions and VERIFIED success.
+- Finding an element is NOT completion - you must CLICK/TYPE/INTERACT with it
+- Saying "I need to click X" is NOT completion - you must ACTUALLY click X
+- Only declare completion when: (1) You performed ALL required actions, AND (2) You verified the results
+- Example: "Found START button" → NOT COMPLETE. "Clicked START, verified page changed" → COMPLETE"""
 
 # Concise autonomous mode instruction
 AUTONOMOUS_MODE = """**Mode**: You are operating autonomously. Take actions, observe results, and continue until the task is complete."""

@@ -403,8 +403,11 @@ Required workflow:
 - Search again without taking action
 - Provide only text without tool calls
 - Skip clicking/typing actions
+- Declare task complete just because you FOUND elements - you must CLICK/TYPE/INTERACT first!
+- Say "I need to do X" then stop - you must ACTUALLY DO X
 
-**YOU MUST:** Use computer tool (click/type) or browser_find tool in this phase."""
+**YOU MUST:** Use computer tool (click/type) or browser_find tool in this phase.
+**REMEMBER:** Finding is NOT completing. You must PERFORM actions and VERIFY results before declaring completion."""
 
                     # Continue with phase 2 using search results
                     response = self.provider.create_continuation_request(
