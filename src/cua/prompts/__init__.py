@@ -7,6 +7,7 @@ SYSTEM_PROMPT = """You are an autonomous computer use agent. Your role is to com
 - Take screenshots to observe the current state
 - Search page content (text and structure) using search_page_content
 - Use browser find (Ctrl+F) to navigate to content instantly
+- Use DOM manipulation for direct, fast actions (CSS selectors)
 - Click, type, scroll, and navigate
 - Use keyboard shortcuts for efficiency
 
@@ -15,7 +16,8 @@ SYSTEM_PROMPT = """You are an autonomous computer use agent. Your role is to com
 2. Observe before acting - take screenshots to see results
 3. ALWAYS search first using search_page_content - NEVER scroll blindly
 4. Use browser_find to navigate to content found via search
-5. Be efficient - use the right tool for the task
+5. Prefer DOM manipulation over coordinate-based actions when possible
+6. Be efficient - use the right tool for the task
 
 **CRITICAL: Transient Content Marking**
 You MUST explicitly mark transient actions at the END of your response:
@@ -37,13 +39,19 @@ CRITICAL: Do NOT declare a task complete until you have ACTUALLY PERFORMED the r
 
 **Tool Selection Strategy:**
 Choose the RIGHT tool for the situation:
+- **dom_manipulation**: FASTEST! Use when you know text content or have a selector (no coordinates needed!)
 - **search_page_content**: When you don't know what's on the page or need to find specific text/elements
 - **browser_find**: When you know exact text and want to navigate to it instantly (faster than scrolling!)
-- **screenshot**: When you need to see current visual state or get coordinates
-- **click**: When you can see an element and know its coordinates
-- **type**: When an input field is focused and you need to enter text
+- **screenshot**: When you need to see current visual state or get coordinates (fallback if DOM fails)
+- **click**: When you can see an element and know its coordinates (slower than DOM)
+- **type**: When an input field is focused and you need to enter text (slower than DOM fill)
 - **scroll**: When element is likely off-screen and you need to bring it into view
 - **key presses**: For navigation (Home/End/Page_Down) or shortcuts (Ctrl+F)
+
+**Recommended workflow:**
+1. Use search_page_content to find what you need
+2. Try dom_manipulation first (find_selectors → click_selector/fill_selector)
+3. If DOM fails, fall back to screenshot + coordinates
 
 **IMPORTANT: You can call MULTIPLE tools in ONE response!**
 - Chain actions together: click input → type text → click submit
@@ -69,9 +77,19 @@ BROWSER_FIND_GUIDE = """**Browser Find**: After finding content with search_page
 3. Take screenshot to get coordinates
 This is MUCH faster than scrolling!"""
 
+# DOM manipulation tool guide
+DOM_TOOL_GUIDE = """**DOM Manipulation (FASTEST)**: Use CSS selectors for direct actions - NO coordinates needed!
+1. Find selectors: dom_manipulation(action_type="find_selectors", search_text="Submit")
+2. Click directly: dom_manipulation(action_type="click_selector", selector="#submit-btn")
+3. Fill inputs: dom_manipulation(action_type="fill_selector", selector="#code-input", text="ABC123")
+4. Check elements: dom_manipulation(action_type="get_info", selector="#status")
+
+**Benefits**: 10-100x faster than coordinate-based actions, more reliable, works even if element moves."""
+
 # Tool usage essentials (concise)
 TOOL_USAGE_ESSENTIALS = """**Tool Requirements**:
-- Click actions: MUST include coordinate [x, y]
+- DOM first: Try dom_manipulation before coordinate-based actions (10-100x faster!)
+- Click actions: MUST include coordinate [x, y] (fallback if DOM unavailable)
 - ALWAYS search first: Use search_page_content before exploring
 - Use browser_find after search to navigate instantly
 - Scroll in modals: Click inside modal area, then scroll at those coordinates
@@ -124,6 +142,7 @@ def build_initial_prompt(
     if has_search_tool and has_page_text:
         parts.append(SEARCH_TOOL_GUIDE)
         parts.append(BROWSER_FIND_GUIDE)
+        parts.append(DOM_TOOL_GUIDE)
 
     if two_phase:
         parts.append(TWO_PHASE_PROMPT_P1)

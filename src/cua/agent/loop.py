@@ -542,12 +542,13 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                 if not hasattr(self, 'action_history'):
                     self.action_history = []
 
-                has_computer_action = any(a.type not in [ActionType.SEARCH, ActionType.SCREENSHOT] for a in actions)
+                has_computer_action = any(a.type not in [ActionType.SEARCH, ActionType.SCREENSHOT, ActionType.DOM_MANIPULATION] for a in actions)
                 has_search_action = any(a.type == ActionType.SEARCH for a in actions)
+                has_dom_action = any(a.type == ActionType.DOM_MANIPULATION for a in actions)
 
-                if has_search_action and not has_computer_action:
+                if has_search_action and not has_computer_action and not has_dom_action:
                     self.search_only_count += 1
-                elif has_computer_action:
+                elif has_computer_action or has_dom_action:
                     self.search_only_count = 0
 
                 # Add current actions to history (keep last 5)
@@ -589,6 +590,27 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                         # Two-phase workflow: Store search results for phase transition
                         if self.two_phase_workflow and self.current_phase == 1:
                             self.phase_search_results = search_results
+                    elif action.type == ActionType.DOM_MANIPULATION:
+                        # Handle DOM manipulation action with DOMTool
+                        from cua.tools.dom_tool import DOMTool, DOMAction
+
+                        dom_tool = DOMTool(self.browser)
+                        dom_action = DOMAction(
+                            action_type=action.params.get("action_type"),
+                            selector=action.params.get("selector"),
+                            text=action.params.get("text"),
+                            search_text=action.params.get("search_text"),
+                            script=action.params.get("script"),
+                            limit=action.params.get("limit", 10)
+                        )
+
+                        result = dom_tool.execute(dom_action)
+
+                        # Display result
+                        if result.get("success"):
+                            self.console.print(f"  [green]✓ DOM action successful[/green]")
+                        else:
+                            self.console.print(f"  [red]✗ Error: {result.get('error')}[/red]")
                     else:
                         # Execute browser action
                         result = self.browser.execute_action(action)
@@ -1022,5 +1044,25 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
             return "Take screenshot"
         elif action.type.value == "wait":
             return "Wait"
+        elif action.type.value == "dom_manipulation":
+            dom_action_type = action.params.get("action_type", "unknown")
+            if dom_action_type == "click_selector":
+                selector = action.params.get("selector", "")
+                return f"DOM Click: {selector}"
+            elif dom_action_type == "fill_selector":
+                selector = action.params.get("selector", "")
+                text = action.params.get("text", "")
+                truncated = text[:30] + "..." if len(text) > 30 else text
+                return f"DOM Fill: {selector} = '{truncated}'"
+            elif dom_action_type == "find_selectors":
+                search_text = action.params.get("search_text", "")
+                return f"DOM Find: '{search_text}'"
+            elif dom_action_type == "get_info":
+                selector = action.params.get("selector", "")
+                return f"DOM Info: {selector}"
+            elif dom_action_type == "evaluate_js":
+                return "DOM Evaluate JS"
+            else:
+                return f"DOM: {dom_action_type}"
         else:
             return f"{action_type.title()}"

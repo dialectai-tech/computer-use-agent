@@ -21,6 +21,7 @@ class ActionType(Enum):
     MOUSE_MOVE = "mouse_move"
     SEARCH = "search"  # Search page content
     BROWSER_FIND = "browser_find"  # Browser find (Ctrl+F) to navigate to content
+    DOM_MANIPULATION = "dom_manipulation"  # Direct DOM manipulation via CSS selectors
 
 
 @dataclass

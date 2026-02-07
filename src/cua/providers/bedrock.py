@@ -9,6 +9,7 @@ import re
 
 from cua.providers.base import ComputerUseProvider, Action, ActionType
 from cua.prompts import build_initial_prompt, get_system_prompt, TOOL_USAGE_ESSENTIALS, TWO_PHASE_PROMPT_P2
+from cua.tools.dom_tool import DOM_TOOL_DEFINITION
 
 
 class BedrockProvider(ComputerUseProvider):
@@ -350,6 +351,8 @@ class BedrockProvider(ComputerUseProvider):
                     "required": ["search_term"]
                 }
             },
+            # DOM manipulation tool - direct selector-based actions
+            DOM_TOOL_DEFINITION,
             {
                 "type": self.tool_version,
                 "name": "computer",
@@ -517,6 +520,14 @@ class BedrockProvider(ComputerUseProvider):
                 # Return command output as text
                 output = action_result.get("output", "") if action_result else ""
                 result_content = [{"text": output}]
+            elif tool_name == "dom_manipulation":
+                # Return DOM manipulation result
+                if action_result:
+                    import json
+                    result_text = json.dumps(action_result, indent=2)
+                    result_content = [{"text": f"DOM Action Result:\n```json\n{result_text}\n```"}]
+                else:
+                    result_content = [{"text": "DOM action completed"}]
             else:
                 result_content = [{"text": "success"}]
 
@@ -578,6 +589,8 @@ class BedrockProvider(ComputerUseProvider):
                     "required": ["search_term"]
                 }
             },
+            # DOM manipulation tool - direct selector-based actions
+            DOM_TOOL_DEFINITION,
             {
                 "type": self.tool_version,
                 "name": "computer",
@@ -710,6 +723,15 @@ class BedrockProvider(ComputerUseProvider):
                     tool_input = tool_use.get('input', {})
                     action = Action(
                         type=ActionType.BROWSER_FIND,
+                        params=tool_input,
+                        id=tool_use.get('toolUseId', '')
+                    )
+                    actions.append(action)
+                elif tool_name == "dom_manipulation":
+                    # Handle DOM manipulation tool
+                    tool_input = tool_use.get('input', {})
+                    action = Action(
+                        type=ActionType.DOM_MANIPULATION,
                         params=tool_input,
                         id=tool_use.get('toolUseId', '')
                     )
