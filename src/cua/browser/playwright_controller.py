@@ -521,10 +521,20 @@ class PlaywrightController:
         """
         # Try different parameter formats
         if "coordinate" in params:
-            # Claude format
+            # Claude format (singular)
             x, y = params["coordinate"][0], params["coordinate"][1]
 
             # Warn if coordinates are suspiciously at origin (common AI error)
+            if x == 0 and y == 0:
+                print(f"⚠️  WARNING: Coordinates are (0, 0) - AI may not be using screenshot for positioning")
+                print(f"   Action params: {params}")
+
+            return x, y
+        elif "coordinates" in params:
+            # Some models use plural "coordinates"
+            x, y = params["coordinates"][0], params["coordinates"][1]
+
+            # Warn if coordinates are at origin
             if x == 0 and y == 0:
                 print(f"⚠️  WARNING: Coordinates are (0, 0) - AI may not be using screenshot for positioning")
                 print(f"   Action params: {params}")
