@@ -54,8 +54,8 @@ console = Console()
 @click.option(
     "--display-height",
     type=int,
-    default=lambda: int(os.getenv("DISPLAY_HEIGHT", "768")),
-    help="Display height in pixels (default: 768)"
+    default=lambda: int(os.getenv("DISPLAY_HEIGHT", "900")),
+    help="Display height in pixels (default: 900)"
 )
 @click.option(
     "--zoom",
