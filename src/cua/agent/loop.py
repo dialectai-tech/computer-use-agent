@@ -41,6 +41,7 @@ class ComputerUseAgent:
         extended_thinking: bool = False,
         thinking_budget: int = 10000,
         use_accessibility_tree: bool = True,
+        use_page_text: bool = True,
         two_phase_workflow: bool = False,
         max_message_turns: int = 10
     ):
@@ -59,6 +60,7 @@ class ComputerUseAgent:
             extended_thinking: Enable extended thinking for complex reasoning
             thinking_budget: Token budget for extended thinking
             use_accessibility_tree: Use accessibility tree alongside screenshots
+            use_page_text: Include extracted page text alongside screenshots
             two_phase_workflow: Enable two-phase workflow (search first, then screenshot)
             max_message_turns: Maximum number of message turns to keep in history
         """
@@ -79,6 +81,7 @@ class ComputerUseAgent:
         self.extended_thinking = extended_thinking
         self.thinking_budget = thinking_budget
         self.use_accessibility_tree = use_accessibility_tree
+        self.use_page_text = use_page_text
         self.two_phase_workflow = two_phase_workflow
         self.console = Console()
         self.browser: Optional[PlaywrightController] = None
@@ -204,8 +207,8 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                 response = self.provider.create_initial_request(
                     prompt=phase1_prompt,
                     screenshot=None,  # NO screenshot in phase 1
-                    accessibility_tree=accessibility_tree,
-                    page_text=page_text,
+                    accessibility_tree=accessibility_tree if self.use_accessibility_tree else None,
+                    page_text=page_text if self.use_page_text else None,
                     display_width=self.display_width,
                     display_height=self.display_height
                 )
@@ -214,8 +217,8 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                 response = self.provider.create_initial_request(
                     prompt=prompt,
                     screenshot=screenshot,
-                    accessibility_tree=accessibility_tree,
-                    page_text=page_text,
+                    accessibility_tree=accessibility_tree if self.use_accessibility_tree else None,
+                    page_text=page_text if self.use_page_text else None,
                     display_width=self.display_width,
                     display_height=self.display_height
                 )
@@ -308,8 +311,8 @@ Take a screenshot, analyze the current state, and proceed with the next step of 
                         # Continue with reminder
                         response = self.provider.create_continuation_request(
                             screenshot=screenshot,
-                            accessibility_tree=accessibility_tree,
-                            page_text=page_text,
+                            accessibility_tree=accessibility_tree if self.use_accessibility_tree else None,
+                            page_text=page_text if self.use_page_text else None,
                             search_results=None,
                             display_width=self.display_width,
                             display_height=self.display_height,
@@ -369,8 +372,8 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                     # Continue with a prompt reminding AI to take action
                     response = self.provider.create_continuation_request(
                         screenshot=screenshot,
-                        accessibility_tree=accessibility_tree,
-                        page_text=page_text,
+                        accessibility_tree=accessibility_tree if self.use_accessibility_tree else None,
+                        page_text=page_text if self.use_page_text else None,
                         search_results=None,
                         display_width=self.display_width,
                         display_height=self.display_height,
@@ -502,8 +505,8 @@ WRONG: Calling browser_find without search_term parameter
                     # Continue with phase 2 using search results
                     response = self.provider.create_continuation_request(
                         screenshot=screenshot,
-                        accessibility_tree=accessibility_tree,
-                        page_text=page_text,
+                        accessibility_tree=accessibility_tree if self.use_accessibility_tree else None,
+                        page_text=page_text if self.use_page_text else None,
                         search_results=search_results,
                         display_width=self.display_width,
                         display_height=self.display_height,
@@ -653,8 +656,8 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
                 # Pass search results if any, and combined messages if detected
                 response = self.provider.create_continuation_request(
                     screenshot=screenshot,
-                    accessibility_tree=accessibility_tree,
-                    page_text=page_text,
+                    accessibility_tree=accessibility_tree if self.use_accessibility_tree else None,
+                    page_text=page_text if self.use_page_text else None,
                     search_results=search_results if search_results else None,
                     display_width=self.display_width,
                     display_height=self.display_height,

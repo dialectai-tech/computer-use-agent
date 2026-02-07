@@ -102,8 +102,13 @@ console = Console()
 )
 @click.option(
     "--use-accessibility-tree/--no-accessibility-tree",
-    default=True,
-    help="Use accessibility tree alongside screenshots for better web automation (default: enabled)"
+    default=False,
+    help="Use accessibility tree alongside screenshots (default: disabled)"
+)
+@click.option(
+    "--use-page-text/--no-page-text",
+    default=False,
+    help="Include extracted page text alongside screenshots (default: disabled)"
 )
 @click.option(
     "--two-phase-workflow/--no-two-phase-workflow",
@@ -133,6 +138,7 @@ def cli(
     extended_thinking: bool,
     thinking_budget: int,
     use_accessibility_tree: bool,
+    use_page_text: bool,
     two_phase_workflow: bool,
     max_message_turns: int
 ):
@@ -230,6 +236,7 @@ def cli(
         extended_thinking=extended_thinking,
         thinking_budget=thinking_budget,
         use_accessibility_tree=use_accessibility_tree,
+        use_page_text=use_page_text,
         two_phase_workflow=two_phase_workflow,
         max_message_turns=max_message_turns
     )
