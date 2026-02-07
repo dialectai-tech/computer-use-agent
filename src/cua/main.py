@@ -86,8 +86,8 @@ console = Console()
 @click.option(
     "--context-window-size",
     type=int,
-    default=lambda: int(os.getenv("CONTEXT_WINDOW_SIZE", "10")),
-    help="Number of recent screenshots to keep in context (default: 10)"
+    default=lambda: int(os.getenv("CONTEXT_WINDOW_SIZE", "3")),
+    help="Number of recent screenshots to keep in context (default: 3)"
 )
 @click.option(
     "--extended-thinking/--no-extended-thinking",
@@ -118,8 +118,8 @@ console = Console()
 @click.option(
     "--max-message-turns",
     type=int,
-    default=lambda: int(os.getenv("MAX_MESSAGE_TURNS", "10")),
-    help="Maximum number of message turns to keep in history (default: 10)"
+    default=lambda: int(os.getenv("MAX_MESSAGE_TURNS", "3")),
+    help="Maximum number of message turns to keep in history (default: 3)"
 )
 def cli(
     url: str,
