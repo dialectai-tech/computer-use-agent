@@ -410,9 +410,9 @@ and use the screenshot to find WHERE (coordinates) to interact."""
                         "phase": self.current_phase if self.two_phase_workflow else "normal",
                         "screenshots_in_context": len(self.screenshot_history),
                         "non_transient_screenshots": non_transient_count,
-                        "input_tokens": self.provider.stats.total_input_tokens,
-                        "output_tokens": self.provider.stats.total_output_tokens,
-                        "api_calls": self.provider.stats.total_api_calls,
+                        "input_tokens": self.provider.stats.input_tokens,
+                        "output_tokens": self.provider.stats.output_tokens,
+                        "api_calls": self.provider.stats.api_calls,
                     }
 
                     self.logger.log_iteration(
