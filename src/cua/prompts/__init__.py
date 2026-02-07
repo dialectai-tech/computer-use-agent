@@ -33,7 +33,28 @@ CRITICAL: Do NOT declare a task complete until you have ACTUALLY PERFORMED the r
 - Finding an element is NOT completion - you must CLICK/TYPE/INTERACT with it
 - Saying "I need to click X" is NOT completion - you must ACTUALLY click X
 - Only declare completion when: (1) You performed ALL required actions, AND (2) You verified the results
-- Example: "Found START button" → NOT COMPLETE. "Clicked START, verified page changed" → COMPLETE"""
+- Example: "Found START button" → NOT COMPLETE. "Clicked START, verified page changed" → COMPLETE
+
+**Tool Selection Strategy:**
+Choose the RIGHT tool for the situation:
+- **search_page_content**: When you don't know what's on the page or need to find specific text/elements
+- **browser_find**: When you know exact text and want to navigate to it instantly (faster than scrolling!)
+- **screenshot**: When you need to see current visual state or get coordinates
+- **click**: When you can see an element and know its coordinates
+- **type**: When an input field is focused and you need to enter text
+- **scroll**: When element is likely off-screen and you need to bring it into view
+- **key presses**: For navigation (Home/End/Page_Down) or shortcuts (Ctrl+F)
+
+**IMPORTANT: You can call MULTIPLE tools in ONE response!**
+- Chain actions together: click input → type text → click submit
+- Example: Call computer tool 3 times: (1) click [x,y], (2) type "code", (3) click [x2,y2]
+- This is MUCH more efficient than one action per turn!
+
+**When Stuck (same action fails 2+ times):**
+1. Try a DIFFERENT approach - don't repeat the same failed action
+2. If searching fails → try browser_find or scrolling
+3. If clicking fails → verify coordinates, try screenshot to see current state
+4. If element not visible → scroll or use Ctrl+Home/End to reposition page"""
 
 # Concise autonomous mode instruction
 AUTONOMOUS_MODE = """**Mode**: You are operating autonomously. Take actions, observe results, and continue until the task is complete."""

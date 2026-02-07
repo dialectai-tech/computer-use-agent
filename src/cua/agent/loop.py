@@ -331,6 +331,10 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                 if not hasattr(self, 'search_only_count'):
                     self.search_only_count = 0
 
+                # Track action history for stuck detection
+                if not hasattr(self, 'action_history'):
+                    self.action_history = []
+
                 has_computer_action = any(a.type not in [ActionType.SEARCH, ActionType.SCREENSHOT] for a in actions)
                 has_search_action = any(a.type == ActionType.SEARCH for a in actions)
 
@@ -338,6 +342,12 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                     self.search_only_count += 1
                 elif has_computer_action:
                     self.search_only_count = 0
+
+                # Add current actions to history (keep last 5)
+                action_types = [a.type.value for a in actions]
+                self.action_history.append(action_types)
+                if len(self.action_history) > 5:
+                    self.action_history.pop(0)
 
                 for action in actions:
                     action_desc = self._format_action(action)
@@ -522,15 +532,40 @@ WRONG: Calling browser_find without search_term parameter
                     # Note: The provider will add this reminder to the context automatically
                     # via the enhanced Phase 2 prompts and system prompts
 
+                # Detect if stuck (repeating same actions)
+                stuck_message = None
+                if len(self.action_history) >= 3:
+                    # Check if last 3 iterations have similar action patterns
+                    recent = self.action_history[-3:]
+                    # Flatten the lists
+                    all_actions = [item for sublist in recent for item in sublist]
+                    # Count occurrences
+                    if len(all_actions) > 0:
+                        from collections import Counter
+                        action_counts = Counter(all_actions)
+                        most_common = action_counts.most_common(1)[0]
+                        # If one action type appears 3+ times in last 3 iterations
+                        if most_common[1] >= 3:
+                            stuck_action = most_common[0]
+                            stuck_message = f"""⚠️ STUCK DETECTED: You've used '{stuck_action}' {most_common[1]} times recently without making progress.
+
+Try a DIFFERENT approach:
+- If searching fails → Use browser_find or scroll instead
+- If browser_find fails → Use Ctrl+Home/End to reposition, then try screenshot
+- If clicking fails → Verify element is visible in screenshot first
+- Consider calling MULTIPLE actions in one response (click → type → submit)"""
+                            self.console.print(f"[yellow]{stuck_message}[/yellow]")
+
                 # Continue conversation (only with recent screenshots in context)
-                # Pass search results if any
+                # Pass search results if any, and stuck message if detected
                 response = self.provider.create_continuation_request(
                     screenshot=screenshot,
                     accessibility_tree=accessibility_tree,
                     page_text=page_text,
                     search_results=search_results if search_results else None,
                     display_width=self.display_width,
-                    display_height=self.display_height
+                    display_height=self.display_height,
+                    additional_instruction=stuck_message  # Inject stuck detection message
                 )
 
                 # Small delay between iterations
