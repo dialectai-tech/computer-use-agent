@@ -483,12 +483,9 @@ class BedrockProvider(ComputerUseProvider):
                 }
             })
 
-        # Inject additional instruction if provided (before tool results)
+        # Inject additional instruction as first content block if provided
         if additional_instruction:
-            self.messages.append({
-                "role": "user",
-                "content": [{"text": additional_instruction}]
-            })
+            tool_result_content.insert(0, {"text": additional_instruction})
 
         # Add tool results as user message
         self.messages.append({
