@@ -436,11 +436,12 @@ class PlaywrightController:
 
             elif action.type == ActionType.BROWSER_FIND:
                 # Use browser's native find (Ctrl+F) to navigate to content
-                search_term = action.params.get("search_term", "")
+                # Accept both "search_term" (correct) and "text" (model often uses this by mistake)
+                search_term = action.params.get("search_term") or action.params.get("text", "")
                 close_after = action.params.get("close_after", True)
 
                 if not search_term:
-                    return {"success": False, "error": "search_term is required for browser_find"}
+                    return {"success": False, "error": "search_term (or text) is required for browser_find. Provide the exact text to find on page."}
 
                 # Open browser find dialog with Ctrl+F
                 self.page.keyboard.press("Control+f")

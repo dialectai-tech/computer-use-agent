@@ -535,19 +535,25 @@ class BedrockProvider(ComputerUseProvider):
 **OPTIONAL Parameters:**
 - close_after: (boolean, optional) Close find dialog after finding (default: true)
 
-**Example Usage:**
+**CRITICAL: Parameter name is "search_term" NOT "text"!**
+
+**Example Usage (with exact JSON format):**
 
 1. Navigate to button text:
-   browser_find(search_term="START")
+   {"search_term": "START"}
    → Scrolls to "START" button and highlights it
 
 2. Navigate to specific code:
-   browser_find(search_term="CODE123")
+   {"search_term": "CODE123"}
    → Scrolls to "CODE123" text and highlights it
 
 3. Navigate and keep dialog open:
-   browser_find(search_term="Enter code", close_after=false)
+   {"search_term": "Enter code", "close_after": false}
    → Scrolls to text but leaves find dialog open
+
+**Parameter Name Warning:**
+✗ WRONG: {"text": "START"} ← This will fail!
+✓ CORRECT: {"search_term": "START"} ← Use this!
 
 **Workflow:**
 1. Use search_page_content FIRST to find what text exists
