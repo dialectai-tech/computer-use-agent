@@ -439,9 +439,10 @@ class BedrockProvider(ComputerUseProvider):
 
         self.messages = [{"role": "user", "content": content}]
 
-        # Store first user message for context reset
+        # Store first user message for context reset (deep copy to avoid mutations)
         if not self.first_user_message:
-            self.first_user_message = self.messages[0]
+            import copy
+            self.first_user_message = copy.deepcopy(self.messages[0])
 
         # Tools configuration - use model-specific tool version
         tools_config = [
