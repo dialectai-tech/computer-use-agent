@@ -153,10 +153,16 @@ class ComputerUseAgent:
 
         # Get total tokens from response
         if hasattr(response, 'input_tokens'):
+            # Response object with attributes
             breakdown.total_input_tokens = response.input_tokens
             breakdown.total_output_tokens = response.output_tokens
+        elif isinstance(response, dict) and 'usage' in response:
+            # Bedrock Converse API response dict format
+            breakdown.total_input_tokens = response['usage'].get('inputTokens', 0)
+            breakdown.total_output_tokens = response['usage'].get('outputTokens', 0)
         elif hasattr(self.provider, 'stats') and self.provider.stats:
-            # Fallback: get from provider stats
+            # Fallback: get from provider stats (LAST RESORT - this is cumulative!)
+            # This should rarely be reached now that we check dict responses
             breakdown.total_input_tokens = self.provider.stats.input_tokens
             breakdown.total_output_tokens = self.provider.stats.output_tokens
         else:
