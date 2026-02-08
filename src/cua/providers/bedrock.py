@@ -386,7 +386,8 @@ class BedrockProvider(ComputerUseProvider):
         accessibility_tree: Optional[dict] = None,
         page_text: Optional[str] = None,
         display_width: int = 1024,
-        display_height: int = 768
+        display_height: int = 768,
+        use_dom_manipulation: bool = True
     ) -> Any:
         """Create initial API request using Bedrock Converse API.
 
@@ -397,6 +398,7 @@ class BedrockProvider(ComputerUseProvider):
             page_text: Extracted page text (optional)
             display_width: Display width in pixels
             display_height: Display height in pixels
+            use_dom_manipulation: Enable DOM manipulation tool (default: True)
 
         Returns:
             Bedrock Converse API response
@@ -490,8 +492,14 @@ class BedrockProvider(ComputerUseProvider):
                     "required": ["search_term"]
                 }
             },
-            # DOM manipulation tool - direct selector-based actions
-            DOM_TOOL_DEFINITION,
+        ]
+
+        # Add DOM manipulation tool if enabled
+        if use_dom_manipulation:
+            tools_config.append(DOM_TOOL_DEFINITION)
+
+        # Add context reset and computer tools
+        tools_config.extend([
             # Context reset tool - AI can reset its own context at milestones
             CONTEXT_RESET_TOOL_DEFINITION,
             {
@@ -505,7 +513,7 @@ class BedrockProvider(ComputerUseProvider):
                 "type": self.bash_version,
                 "name": "bash"
             }
-        ]
+        ])
 
         # Determine beta version based on tool version
         # computer_20241022 -> computer-use-2024-10-22
@@ -574,7 +582,8 @@ class BedrockProvider(ComputerUseProvider):
         action_result: Optional[Dict[str, Any]] = None,
         display_width: int = 1024,
         display_height: int = 768,
-        additional_instruction: Optional[str] = None
+        additional_instruction: Optional[str] = None,
+        use_dom_manipulation: bool = True
     ) -> Any:
         """Create continuation request with tool results.
 
@@ -587,6 +596,7 @@ class BedrockProvider(ComputerUseProvider):
             display_width: Display width in pixels
             display_height: Display height in pixels
             additional_instruction: Additional instruction/prompt to inject (optional)
+            use_dom_manipulation: Enable DOM manipulation tool (default: True)
 
         Returns:
             Bedrock Converse API response
@@ -749,8 +759,14 @@ class BedrockProvider(ComputerUseProvider):
                     "required": ["search_term"]
                 }
             },
-            # DOM manipulation tool - direct selector-based actions
-            DOM_TOOL_DEFINITION,
+        ]
+
+        # Add DOM manipulation tool if enabled
+        if use_dom_manipulation:
+            tools_config.append(DOM_TOOL_DEFINITION)
+
+        # Add context reset and computer tools
+        tools_config.extend([
             # Context reset tool - AI can reset its own context at milestones
             CONTEXT_RESET_TOOL_DEFINITION,
             {
@@ -764,7 +780,7 @@ class BedrockProvider(ComputerUseProvider):
                 "type": self.bash_version,
                 "name": "bash"
             }
-        ]
+        ])
 
         # Determine beta version based on tool version
         beta_version = "computer-use-2025-01-24" if "20250124" in self.tool_version else "computer-use-2024-10-22"

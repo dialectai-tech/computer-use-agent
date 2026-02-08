@@ -111,6 +111,11 @@ console = Console()
     help="Include extracted page text for search tool (default: enabled, needed for search_page_content)"
 )
 @click.option(
+    "--use-dom-manipulation/--no-use-dom-manipulation",
+    default=True,
+    help="Enable DOM manipulation tool for CSS selector-based actions (default: enabled)"
+)
+@click.option(
     "--two-phase-workflow/--no-two-phase-workflow",
     default=False,
     help="Enable two-phase workflow: search first (no screenshot), then action with screenshot (default: disabled)"
@@ -150,6 +155,7 @@ def cli(
     thinking_budget: int,
     use_accessibility_tree: bool,
     use_page_text: bool,
+    use_dom_manipulation: bool,
     two_phase_workflow: bool,
     max_message_turns: int,
     auto_context_reset: bool,
@@ -262,6 +268,7 @@ def cli(
         thinking_budget=thinking_budget,
         use_accessibility_tree=use_accessibility_tree,
         use_page_text=use_page_text,
+        use_dom_manipulation=use_dom_manipulation,
         two_phase_workflow=two_phase_workflow,
         max_message_turns=max_message_turns,
         auto_context_reset=auto_context_reset,
