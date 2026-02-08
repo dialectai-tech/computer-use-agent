@@ -1279,7 +1279,7 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
                         "trigger": "automatic",
                         "progress_summary": progress_summary,
                         "next_goal": next_goal,
-                        "input_tokens_before": input_tokens
+                        "input_tokens_before": current_input_tokens
                     })
             else:
                 self.console.print(f"  [red]✗ Automatic context reset failed[/red]\n")
