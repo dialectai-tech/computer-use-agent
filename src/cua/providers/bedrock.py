@@ -462,13 +462,18 @@ class BedrockProvider(ComputerUseProvider):
         if use_search_tool:
             tools_config.append({
                 "name": "search_page_content",
-                "description": """Search page text and accessibility tree for content. ALWAYS use this FIRST before taking any computer actions!
+                "description": """Search page text and accessibility tree to FIND what exists on the page. Use this to DISCOVER content BEFORE interacting!
+
+**KEY DISTINCTION:**
+- search_page_content = FIND what text/elements exist on page (returns line numbers and content)
+- browser_find = NAVIGATE to text you already know exists (scrolls and highlights)
+- computer = INTERACT with coordinates after finding location
 
 **What this tool does:**
 - Searches ALL page content including text not visible in screenshots
 - Returns line numbers and exact text matches
 - Searches both visible text and accessibility tree structure
-- Helps you find buttons, links, inputs, codes, and any text on the page
+- Helps you DISCOVER what buttons, links, inputs, codes exist on the page
 
 **REQUIRED Parameters:**
 - query: (string, REQUIRED) What to search for - can be text, button name, code, etc.
@@ -477,29 +482,42 @@ class BedrockProvider(ComputerUseProvider):
 **Example Usage:**
 
 1. Find a button by text:
-   search_page_content(query="START", search_type="both")
+   {"query": "START", "search_type": "both"}
+   Returns: "📄 Found 3 text match(es) at line(s): 10, 25, 37"
 
 2. Find code or specific text:
-   search_page_content(query="CODE123", search_type="text")
+   {"query": "CODE123", "search_type": "text"}
+   Returns: "📄 Found 1 text match(es) at line(s): 42"
 
-3. Find input fields:
-   search_page_content(query="Enter code", search_type="both")
+3. Search for element that might not exist:
+   {"query": "correct option select"}
+   Returns: "❌ No matches found for 'correct option select'"
 
 **Returns:**
-✓ Found matches: "📄 Found 3 text match(es) at line(s): 10, 25, 37"
+✓ Found matches: "📄 Found 3 text match(es) at line(s): 10, 25, 37" + first match content
 ✗ No matches: "❌ No matches found for 'your query'"
 
+**What to do when NO MATCHES found:**
+1. Try different variations (e.g., "Submit" vs "submit" vs "SUBMIT")
+2. Try shorter/simpler queries (e.g., "START" instead of "START button")
+3. Try searching just part of the text (e.g., "option" instead of "correct option")
+4. Look at the screenshot - the element might be visible with different text
+5. Try searching in tree only: search_type="tree"
+6. If multiple searches fail, the element may not exist - try a different approach
+
 **Best Practices:**
-- Use SHORT, SPECIFIC queries (avoid long phrases)
-- Try multiple variations if first search fails (e.g., "Submit", "submit", "SUBMIT")
-- Search first to find location, then use browser_find or coordinates to interact
-- Don't search for common words like "the", "and" - be specific!
+- Use SHORT, SPECIFIC queries (avoid long phrases like "correct option select")
+- Search for UNIQUE words (e.g., "Reveal" not "the")
+- Try multiple variations if first search returns zero results
+- This tool tells you IF something exists - use browser_find or coordinates to interact after
 
 **Common Mistakes:**
+❌ Don't search for long phrases: query="the correct option to select" (too specific!)
+❌ Don't give up after one failed search - try variations!
 ❌ Don't pass empty query: query=""
-❌ Don't search without quotes: query=button text (should be "button text")
-✓ Do use specific text: query="Reveal Code"
-✓ Do search before clicking""",
+✓ Do use SHORT specific text: query="Reveal"
+✓ Do try multiple variations: "Submit", then "submit", then "button"
+✓ Do check if zero results means element doesn't exist or you need different query,
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -521,7 +539,12 @@ class BedrockProvider(ComputerUseProvider):
         if use_find_tool:
             tools_config.append({
                 "name": "browser_find",
-                "description": """Use browser's native find (Ctrl+F) to instantly navigate to text. MUCH faster than scrolling!
+                "description": """Use browser's native find (Ctrl+F) to NAVIGATE to text you already know exists. Use AFTER search_page_content!
+
+**KEY DISTINCTION:**
+- search_page_content = FIND/DISCOVER what text exists (returns "found" or "not found")
+- browser_find = NAVIGATE to text you ALREADY KNOW exists (scrolls to it and highlights)
+- Don't use browser_find for text that might not exist - use search_page_content first!
 
 **What this tool does:**
 - Opens browser's native find dialog (Ctrl+F)
@@ -539,11 +562,11 @@ class BedrockProvider(ComputerUseProvider):
 
 **Example Usage (with exact JSON format):**
 
-1. Navigate to button text:
+1. Navigate to button text (after confirming it exists via search_page_content):
    {"search_term": "START"}
    → Scrolls to "START" button and highlights it
 
-2. Navigate to specific code:
+2. Navigate to specific code (that you found via search_page_content):
    {"search_term": "CODE123"}
    → Scrolls to "CODE123" text and highlights it
 
@@ -555,32 +578,39 @@ class BedrockProvider(ComputerUseProvider):
 ✗ WRONG: {"text": "START"} ← This will fail!
 ✓ CORRECT: {"search_term": "START"} ← Use this!
 
-**Workflow:**
-1. Use search_page_content FIRST to find what text exists
-2. Use browser_find to navigate to that text
-3. Use computer tool to click coordinates near the highlighted text
+**Recommended Workflow:**
+1. search_page_content FIRST to DISCOVER what text exists
+   Example: search_page_content(query="START") → Returns "📄 Found at line 10"
+2. browser_find SECOND to NAVIGATE to that text
+   Example: browser_find(search_term="START") → Scrolls to and highlights "START"
+3. computer tool THIRD to INTERACT with coordinates
+   Example: computer(action="left_click", coordinate=[540, 400])
 
 **Returns:**
 - Message: "Browser find completed"
 - Screenshot showing the page scrolled to the matched text (highlighted)
 
 **Best Practices:**
+- ALWAYS use search_page_content FIRST to verify text exists
 - Use EXACT text from search_page_content results
 - Use unique text that appears only once (e.g., "Reveal Code" not just "Code")
 - Short text is better (3-10 words max)
 - Case-sensitive: "START" ≠ "start"
 
 **Common Mistakes:**
+❌ Don't use browser_find without search_page_content first
 ❌ Don't pass empty string: search_term=""
-❌ Don't use partial words: search_term="ST" (use "START")
-❌ Don't search for text that doesn't exist
+❌ Don't use for text that might not exist (browser find will fail silently)
+❌ Don't search for text you haven't confirmed exists via search_page_content
+✓ Do use search_page_content first, then browser_find
 ✓ Do use exact text: search_term="Click here to reveal"
 ✓ Do use unique text: search_term="Step 2 of 30"
 
 **When to Use:**
-✓ After search_page_content finds text location
+✓ After search_page_content confirms text exists
 ✓ When you need to scroll to specific content
 ✓ When content is below the fold (not visible in current screenshot)
+✗ Don't use if text might not exist - check with search_page_content first!
 ✗ Don't use if you already see the element in screenshot - just click it!""",
                 "input_schema": {
                     "type": "object",
@@ -826,17 +856,23 @@ class BedrockProvider(ComputerUseProvider):
         if use_search_tool:
             tools_config.append({
                 "name": "search_page_content",
-                "description": """Search page text and accessibility tree for content. ALWAYS use this FIRST before taking any computer actions!
+                "description": """Search page text and tree to DISCOVER what exists. Use FIRST to find content before interacting!
+
+**KEY: search_page_content=FIND what exists, browser_find=NAVIGATE to it, computer=INTERACT with it**
 
 **REQUIRED Parameters:**
-- query: (string, REQUIRED) What to search for - can be text, button name, code, etc.
-- search_type: (string, optional) Where to search - "text", "tree", or "both" (default: "both")
+- query: (string, REQUIRED) Text to search for (e.g., "START", "Submit")
+- search_type: (string, optional) "text", "tree", or "both" (default: "both")
 
-**Example:** search_page_content(query="START", search_type="both")
+**Example:** {"query": "START", "search_type": "both"}
 
-**Returns:** Line numbers and matches, e.g., "📄 Found 3 text match(es) at line(s): 10, 25, 37"
+**Returns:**
+✓ Found: "📄 Found 3 text match(es) at line(s): 10, 25, 37"
+✗ Not found: "❌ No matches found for 'START'"
 
-**Best Practices:** Use short, specific queries. Search first, then use browser_find or click coordinates.""",
+**Zero Results?** Try variations: shorter text, different case, or just part of the word.
+
+**Best Practices:** Use SHORT queries. If no results, try variations before giving up.""",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -858,18 +894,22 @@ class BedrockProvider(ComputerUseProvider):
         if use_find_tool:
             tools_config.append({
                 "name": "browser_find",
-                "description": """Use browser find (Ctrl+F) to instantly navigate to text. MUCH faster than scrolling!
+                "description": """Use browser find (Ctrl+F) to NAVIGATE to text you know exists. Use AFTER search_page_content!
+
+**KEY: search_page_content=FIND what exists, browser_find=NAVIGATE to it, computer=INTERACT**
+
+**CRITICAL: Parameter name is "search_term" NOT "text"!**
 
 **REQUIRED Parameters:**
 - search_term: (string, REQUIRED) Exact text to find on the page
 
-**Example:** browser_find(search_term="Reveal Code")
+**Example:** {"search_term": "Reveal Code"}
 
 **Returns:** Screenshot with page scrolled to matched text (highlighted)
 
-**Workflow:** 1) search_page_content to find text, 2) browser_find to navigate to it, 3) click coordinates
+**Workflow:** 1) search_page_content to confirm text exists, 2) browser_find to navigate to it, 3) computer to click
 
-**Best Practices:** Use exact text from search results. Case-sensitive. Short unique text works best.""",
+**Best Practices:** Use EXACT text from search_page_content results. Case-sensitive. Don't use for text that might not exist.,
                 "input_schema": {
                     "type": "object",
                     "properties": {

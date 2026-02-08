@@ -160,7 +160,27 @@ class SearchTool:
             Summary string
         """
         if not results["found"]:
-            return f"❌ No matches found for '{results['query']}'"
+            # More actionable message for zero results
+            query = results['query']
+            suggestions = []
+
+            # Suggest shorter query if current query is long
+            if len(query) > 15:
+                suggestions.append(f"try shorter: '{query[:10]}...'")
+
+            # Suggest different case if query has mixed case
+            if query != query.lower() and query != query.upper():
+                suggestions.append(f"try '{query.lower()}' or '{query.upper()}'")
+            elif query.islower():
+                suggestions.append(f"try uppercase: '{query.upper()}'")
+            elif query.isupper():
+                suggestions.append(f"try lowercase: '{query.lower()}'")
+
+            # Suggest checking screenshot
+            suggestions.append("check screenshot for actual text")
+
+            suggestion_text = " | ".join(suggestions[:2]) if suggestions else "try different text"
+            return f"❌ No matches found for '{query}' → {suggestion_text}"
 
         parts = []
 
