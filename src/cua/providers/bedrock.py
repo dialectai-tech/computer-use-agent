@@ -278,6 +278,10 @@ class BedrockProvider(ComputerUseProvider):
                         if not (isinstance(block, dict) and "image" in block)
                     ]
 
+                    # AWS Bedrock rejects empty content arrays, add placeholder if needed
+                    if len(msg["content"]) == 0:
+                        msg["content"] = [{"text": "[Screenshot removed for token optimization]"}]
+
             # Count screenshots after stripping
             for msg in self.messages[:-1]:  # All except last
                 if "content" in msg and isinstance(msg["content"], list):
