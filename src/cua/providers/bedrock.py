@@ -709,11 +709,12 @@ class BedrockProvider(ComputerUseProvider):
 
     def create_continuation_request(
         self,
-        screenshot: str,
+        screenshot: str = None,
         accessibility_tree: Optional[dict] = None,
         page_text: Optional[str] = None,
         search_results: Optional[List] = None,
         action_result: Optional[Dict[str, Any]] = None,
+        action_evidence_map: Optional[Dict[str, Any]] = None,
         display_width: int = 1024,
         display_height: int = 768,
         additional_instruction: Optional[str] = None,
@@ -724,15 +725,18 @@ class BedrockProvider(ComputerUseProvider):
         """Create continuation request with tool results.
 
         Args:
-            screenshot: Base64-encoded screenshot
+            screenshot: Base64-encoded screenshot (legacy mode, optional if action_evidence_map provided)
             accessibility_tree: Accessibility tree from browser (optional)
             page_text: Extracted text content from page (optional)
             search_results: Results from search_page_content tool (optional)
-            action_result: Result from previous action execution
+            action_result: Result from previous action execution (optional)
+            action_evidence_map: Map of action_id -> ActionEvidence for multi-action support (optional)
             display_width: Display width in pixels
             display_height: Display height in pixels
             additional_instruction: Additional instruction/prompt to inject (optional)
             use_dom_manipulation: Enable DOM manipulation tool (default: True)
+            use_search_tool: Enable search_page_content tool (default: True)
+            use_find_tool: Enable browser_find tool (default: True)
 
         Returns:
             Bedrock Converse API response
@@ -753,6 +757,22 @@ class BedrockProvider(ComputerUseProvider):
             tool_id = tool_use.get('toolUseId')
             tool_name = tool_use.get('name')
 
+            # Multi-action mode: Get evidence for this specific action
+            action_evidence = None
+            action_screenshot = None
+            if action_evidence_map and tool_id in action_evidence_map:
+                action_evidence = action_evidence_map[tool_id]
+                if action_evidence.screenshot:
+                    # Convert bytes to base64 string if needed
+                    import base64
+                    if isinstance(action_evidence.screenshot, bytes):
+                        action_screenshot = base64.b64encode(action_evidence.screenshot).decode('utf-8')
+                    else:
+                        action_screenshot = action_evidence.screenshot
+
+            # Use per-action screenshot if available, otherwise use shared screenshot
+            tool_screenshot = action_screenshot if action_screenshot else screenshot
+
             # Format tool result based on tool type
             if tool_name == "search_page_content":
                 # Return search results - compact format without full JSON dump
@@ -764,52 +784,80 @@ class BedrockProvider(ComputerUseProvider):
                 else:
                     result_content = [{"text": "Search completed but no results available"}]
             elif tool_name == "computer":
-                # Return screenshot (page text is added globally after all tool results)
-                screenshot_bytes = base64.b64decode(screenshot)
-                result_content = [{
-                    "image": {
-                        "format": "png",
-                        "source": {"bytes": screenshot_bytes}
-                    }
-                }]
+                # Return screenshot (use per-action screenshot if available)
+                if tool_screenshot:
+                    screenshot_bytes = base64.b64decode(tool_screenshot)
+                    result_content = [{
+                        "image": {
+                            "format": "png",
+                            "source": {"bytes": screenshot_bytes}
+                        }
+                    }]
+                else:
+                    result_content = [{"text": "Action completed (no screenshot)"}]
             elif tool_name == "browser_find":
                 # Return browser find result with updated screenshot
-                message = action_result.get("message", "") if action_result else "Browser find completed"
-                result_content = [{"text": message}]
+                message_text = "Browser find completed"
+                if action_evidence and action_evidence.result:
+                    message_text = action_evidence.result.get("message", message_text)
+                elif action_result:
+                    message_text = action_result.get("message", message_text)
+
+                result_content = [{"text": message_text}]
 
                 # Add screenshot to show highlighted content
-                screenshot_bytes = base64.b64decode(screenshot)
-                result_content.append({
-                    "image": {
-                        "format": "png",
-                        "source": {"bytes": screenshot_bytes}
-                    }
-                })
+                if tool_screenshot:
+                    screenshot_bytes = base64.b64decode(tool_screenshot)
+                    result_content.append({
+                        "image": {
+                            "format": "png",
+                            "source": {"bytes": screenshot_bytes}
+                        }
+                    })
             elif tool_name == "bash":
                 # Return command output as text
-                output = action_result.get("output", "") if action_result else ""
-                result_content = [{"text": output}]
+                output = ""
+                if action_evidence and action_evidence.result:
+                    output = action_evidence.result.get("output", "")
+                elif action_result:
+                    output = action_result.get("output", "")
+                result_content = [{"text": output if output else "Command completed"}]
             elif tool_name == "dom_manipulation":
                 # Return DOM manipulation result - compact format
-                if action_result:
-                    success = action_result.get("success", False)
+                dom_result = action_evidence.result if action_evidence else action_result
+                if dom_result:
+                    success = dom_result.get("success", False)
                     if success:
                         # For find_selectors, return compact list
-                        if "matches" in action_result:
-                            matches = action_result["matches"][:3]  # Show first 3
+                        if "matches" in dom_result:
+                            matches = dom_result["matches"][:3]  # Show first 3
                             selectors = [m.get("selector", "") for m in matches]
                             result_text = f"✓ Found: {', '.join(selectors)}"
                         else:
                             result_text = "✓ DOM action successful"
                     else:
-                        error = action_result.get("error", "Unknown error")
+                        error = dom_result.get("error", "Unknown error")
                         result_text = f"✗ DOM action failed: {error}"
                     result_content = [{"text": result_text}]
+
+                    # Add screenshot if visual change occurred
+                    if tool_screenshot and success:
+                        screenshot_bytes = base64.b64decode(tool_screenshot)
+                        result_content.append({
+                            "image": {
+                                "format": "png",
+                                "source": {"bytes": screenshot_bytes}
+                            }
+                        })
                 else:
                     result_content = [{"text": "✓ DOM action completed"}]
             elif tool_name == "reset_context":
                 # Return context reset confirmation
-                message = action_result.get("message", "Context has been reset") if action_result else "Context has been reset"
+                message = "Context has been reset"
+                if action_evidence and action_evidence.result:
+                    message = action_evidence.result.get("message", message)
+                elif action_result:
+                    message = action_result.get("message", message)
                 result_content = [{"text": message}]
             else:
                 result_content = [{"text": "success"}]

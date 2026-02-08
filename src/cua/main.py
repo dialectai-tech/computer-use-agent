@@ -147,6 +147,17 @@ console = Console()
     default=30000,
     help="Input token threshold for automatic context reset (default: 30000)"
 )
+@click.option(
+    "--multi-action-evidence/--single-action-evidence",
+    default=True,
+    help="Capture per-action evidence (screenshots, page text) for multi-action responses (default: enabled)"
+)
+@click.option(
+    "--max-actions-per-response",
+    type=int,
+    default=10,
+    help="Maximum number of actions to execute in a single response (default: 10, 0 = unlimited)"
+)
 def cli(
     url: str,
     prompt: str,
@@ -171,7 +182,9 @@ def cli(
     two_phase_workflow: bool,
     max_message_turns: int,
     auto_context_reset: bool,
-    auto_reset_token_threshold: int
+    auto_reset_token_threshold: int,
+    multi_action_evidence: bool,
+    max_actions_per_response: int
 ):
     """Computer Use Automation - Multi-provider AI agent for browser automation.
 
@@ -286,7 +299,9 @@ def cli(
         two_phase_workflow=two_phase_workflow,
         max_message_turns=max_message_turns,
         auto_context_reset=auto_context_reset,
-        auto_reset_token_threshold=auto_reset_token_threshold
+        auto_reset_token_threshold=auto_reset_token_threshold,
+        multi_action_evidence=multi_action_evidence,
+        max_actions_per_response=max_actions_per_response
     )
 
     # Run task

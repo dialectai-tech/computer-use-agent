@@ -675,6 +675,10 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                 if len(self.action_history) > 5:
                     self.action_history.pop(0)
 
+                # Multi-action evidence collection: Store evidence per action
+                action_evidence_map = {}
+                last_url = self.browser.get_page_info().get('url', '') if hasattr(self.browser, 'get_page_info') else ''
+
                 for action in actions:
                     action_desc = self._format_action(action)
                     self.console.print(f"  → {action_desc}")
@@ -792,6 +796,36 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
 
                     self.provider.stats.add_action()
 
+                    # Multi-action evidence: Collect evidence immediately after action
+                    if self.multi_action_evidence:
+                        # Get current URL after action
+                        current_url = self.browser.get_page_info().get('url', '') if hasattr(self.browser, 'get_page_info') else ''
+
+                        # Capture screenshot if action requires it
+                        action_screenshot = None
+                        if requires_screenshot(action):
+                            action_screenshot = self.browser.take_screenshot()
+                            self.provider.stats.add_screenshot()
+
+                        # Capture page text only if URL changed
+                        action_page_text = None
+                        if self.use_page_text and requires_page_text_capture(last_url, current_url):
+                            action_page_text = self.browser.get_page_text()
+
+                        # Store evidence for this action
+                        evidence = ActionEvidence(
+                            action_id=action.id,
+                            action_type=action.type,
+                            result=result,
+                            screenshot=action_screenshot,
+                            page_text=action_page_text,
+                            url=current_url
+                        )
+                        action_evidence_map[action.id] = evidence
+
+                        # Update last URL for next iteration
+                        last_url = current_url
+
                     if not result.get("success"):
                         self.console.print(f"  [red]✗ Error: {result.get('error')}[/red]")
 
@@ -873,25 +907,55 @@ WRONG: Calling browser_find without search_term parameter
                     # Continue to next iteration with phase 2 response
                     continue
 
-                # Take screenshot and accessibility tree after actions (normal flow)
-                screenshot = self.browser.take_screenshot()
-                self.provider.stats.add_screenshot()
-
-                # Get accessibility tree if enabled
+                # Multi-action mode: Use per-action evidence (already collected)
+                # Single-action mode: Take one screenshot after all actions
+                screenshot = None
                 accessibility_tree = None
-                if self.use_accessibility_tree:
-                    accessibility_tree = self.browser.get_accessibility_tree()
-
-                # Get page text if enabled (needed after message pruning to restore context)
                 page_text = None
-                if self.use_page_text:
-                    current_url = self.browser.get_page_info().get('url', '')
-                    page_text = self.browser.get_page_text()
 
-                    # Track URL changes for logging
-                    if current_url != self.last_page_url:
-                        self.last_page_url = current_url
-                        self.console.print(f"  [dim]📄 Page navigated to: {current_url[:60]}... (fetching page text)[/dim]")
+                if not self.multi_action_evidence or not action_evidence_map:
+                    # Legacy mode: Single screenshot after all actions
+                    screenshot = self.browser.take_screenshot()
+                    self.provider.stats.add_screenshot()
+
+                    # Get accessibility tree if enabled
+                    if self.use_accessibility_tree:
+                        accessibility_tree = self.browser.get_accessibility_tree()
+
+                    # Get page text if enabled (needed after message pruning to restore context)
+                    if self.use_page_text:
+                        current_url = self.browser.get_page_info().get('url', '')
+                        page_text = self.browser.get_page_text()
+
+                        # Track URL changes for logging
+                        if current_url != self.last_page_url:
+                            self.last_page_url = current_url
+                            self.console.print(f"  [dim]📄 Page navigated to: {current_url[:60]}... (fetching page text)[/dim]")
+                else:
+                    # Multi-action mode: Get final page text and accessibility tree
+                    if self.use_accessibility_tree:
+                        accessibility_tree = self.browser.get_accessibility_tree()
+
+                    if self.use_page_text:
+                        current_url = self.browser.get_page_info().get('url', '')
+                        page_text = self.browser.get_page_text()
+
+                        if current_url != self.last_page_url:
+                            self.last_page_url = current_url
+                            self.console.print(f"  [dim]📄 Page navigated to: {current_url[:60]}... (fetching page text)[/dim]")
+
+                    # Use last action's screenshot for history (backward compat)
+                    # Find the last visual action's screenshot
+                    for action_id in reversed(list(action_evidence_map.keys())):
+                        evidence = action_evidence_map[action_id]
+                        if evidence.screenshot:
+                            screenshot = evidence.screenshot
+                            break
+
+                    # If no screenshots in evidence (all non-visual actions), take one now
+                    if screenshot is None:
+                        screenshot = self.browser.take_screenshot()
+                        self.provider.stats.add_screenshot()
 
                 # Get response text and extract memory signals
                 response_text = self.provider.get_response_text(response)
@@ -1043,6 +1107,7 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
                     accessibility_tree=accessibility_tree if self.use_accessibility_tree else None,
                     page_text=page_text if self.use_page_text else None,
                     search_results=search_results if search_results else None,
+                    action_evidence_map=action_evidence_map if self.multi_action_evidence else None,
                     display_width=self.display_width,
                     display_height=self.display_height,
                     additional_instruction=combined_message,  # Inject stuck/progress messages
