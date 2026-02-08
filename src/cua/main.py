@@ -121,6 +121,17 @@ console = Console()
     default=lambda: int(os.getenv("MAX_MESSAGE_TURNS", "3")),
     help="Maximum number of message turns to keep in history (default: 3)"
 )
+@click.option(
+    "--auto-context-reset/--no-auto-context-reset",
+    default=True,
+    help="Automatically reset context at milestones and token thresholds (default: enabled)"
+)
+@click.option(
+    "--auto-reset-token-threshold",
+    type=int,
+    default=30000,
+    help="Input token threshold for automatic context reset (default: 30000)"
+)
 def cli(
     url: str,
     prompt: str,
@@ -140,7 +151,9 @@ def cli(
     use_accessibility_tree: bool,
     use_page_text: bool,
     two_phase_workflow: bool,
-    max_message_turns: int
+    max_message_turns: int,
+    auto_context_reset: bool,
+    auto_reset_token_threshold: int
 ):
     """Computer Use Automation - Multi-provider AI agent for browser automation.
 
@@ -250,7 +263,9 @@ def cli(
         use_accessibility_tree=use_accessibility_tree,
         use_page_text=use_page_text,
         two_phase_workflow=two_phase_workflow,
-        max_message_turns=max_message_turns
+        max_message_turns=max_message_turns,
+        auto_context_reset=auto_context_reset,
+        auto_reset_token_threshold=auto_reset_token_threshold
     )
 
     # Run task

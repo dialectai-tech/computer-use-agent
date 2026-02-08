@@ -53,7 +53,9 @@ class ComputerUseAgent:
         use_accessibility_tree: bool = True,
         use_page_text: bool = True,
         two_phase_workflow: bool = False,
-        max_message_turns: int = 10
+        max_message_turns: int = 10,
+        auto_context_reset: bool = True,
+        auto_reset_token_threshold: int = 30000
     ):
         """Initialize agent.
 
@@ -73,9 +75,13 @@ class ComputerUseAgent:
             use_page_text: Include extracted page text alongside screenshots
             two_phase_workflow: Enable two-phase workflow (search first, then screenshot)
             max_message_turns: Maximum number of message turns to keep in history
+            auto_context_reset: Enable automatic context reset at milestones
+            auto_reset_token_threshold: Input token threshold for automatic reset
         """
         self.provider = provider
         self.max_message_turns = max_message_turns
+        self.auto_context_reset = auto_context_reset
+        self.auto_reset_token_threshold = auto_reset_token_threshold
 
         # Pass max_message_turns to provider if it supports it
         if hasattr(self.provider, 'max_message_turns'):
@@ -109,6 +115,11 @@ class ComputerUseAgent:
         # Two-phase workflow state
         self.current_phase = 1 if two_phase_workflow else 0  # 0=normal, 1=search, 2=action
         self.phase_search_results = None  # Store search results from phase 1
+
+        # Automatic context reset tracking
+        self.last_reset_iteration = 0  # Track when we last reset context
+        self.last_milestone_step = 0  # Track last completed step number
+        self.current_page_section = None  # Track current page section for navigation detection
 
         # Pass configuration to provider
         self.provider.enable_caching = enable_caching
@@ -827,6 +838,14 @@ WRONG: Calling browser_find without search_term parameter
                 # Manage context window (prune old screenshots)
                 self._manage_context_window()
 
+                # Check if automatic context reset should be triggered
+                current_url = self.browser.get_page_info().get('url', '') if self.browser else ''
+                self._auto_reset_context_if_needed(
+                    iteration=iteration + 1,
+                    page_text=page_text if self.use_page_text else None,
+                    current_url=current_url
+                )
+
                 # Log context stats
                 non_transient_count = sum(1 for item in self.screenshot_history if not item.get("transient", False))
                 self.console.print(f"  [dim]Context: {len(self.screenshot_history)} screenshots ({non_transient_count} important)[/dim]")
@@ -1120,6 +1139,146 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
             # Keep all non-transient + fill with recent transient if needed
             remaining = self.context_window_size - len(non_transient)
             self.screenshot_history = non_transient + transient[-remaining:] if remaining > 0 else non_transient
+
+    def _should_auto_reset_context(
+        self,
+        iteration: int,
+        page_text: Optional[str],
+        current_url: str,
+        input_tokens: int
+    ) -> tuple[bool, Optional[str], Optional[str]]:
+        """Detect if context should be automatically reset.
+
+        Args:
+            iteration: Current iteration number
+            page_text: Current page text (for milestone detection)
+            current_url: Current URL (for navigation detection)
+            input_tokens: Current input token count
+
+        Returns:
+            Tuple of (should_reset, progress_summary, next_goal)
+        """
+        import re
+
+        # Don't reset too frequently (minimum 5 iterations between resets)
+        if iteration - self.last_reset_iteration < 5:
+            return (False, None, None)
+
+        # Condition 1: Milestone detection (Step X completed, now on Step X+1)
+        if page_text:
+            # Look for step indicators like "Step 5 of 30"
+            step_match = re.search(r'Step\s+(\d+)\s+of\s+(\d+)', page_text, re.IGNORECASE)
+            if step_match:
+                current_step = int(step_match.group(1))
+                total_steps = int(step_match.group(2))
+
+                # Trigger reset every 5 steps or on major milestones
+                if current_step > self.last_milestone_step and current_step % 5 == 0:
+                    progress_summary = f"Completed steps {self.last_milestone_step + 1} through {current_step - 1}. Currently on Step {current_step} of {total_steps}."
+                    next_goal = f"Complete Step {current_step} and continue progressing through remaining steps to reach Step {total_steps}."
+                    self.last_milestone_step = current_step
+                    self.last_reset_iteration = iteration
+                    return (True, progress_summary, next_goal)
+
+        # Condition 2: Token threshold (conversation getting too long)
+        # Reset if input tokens exceed configured threshold
+        if input_tokens > self.auto_reset_token_threshold:
+            page_info = self.browser.get_page_info() if self.browser else {}
+            page_title = page_info.get('title', 'Unknown page')
+            progress_summary = f"Conversation context has grown large ({input_tokens:,} input tokens). Currently on: {page_title}"
+            next_goal = "Continue with the current task from this checkpoint with a fresh context."
+            self.last_reset_iteration = iteration
+            return (True, progress_summary, next_goal)
+
+        # Condition 3: Major navigation (URL path changed significantly)
+        # Detect transitions like /step1 -> /step2, or main page -> different section
+        if self.current_page_section and current_url:
+            # Extract meaningful path segment
+            current_section = re.search(r'/([^/?]+)', current_url)
+            if current_section:
+                current_section = current_section.group(1)
+                if current_section != self.current_page_section:
+                    # Section changed, consider reset after multiple iterations in new section
+                    # (Don't reset immediately on navigation, give AI time to work)
+                    if iteration - self.last_reset_iteration > 10:
+                        page_info = self.browser.get_page_info() if self.browser else {}
+                        page_title = page_info.get('title', 'New section')
+                        progress_summary = f"Navigated from {self.current_page_section} to {current_section}. Now on: {page_title}"
+                        next_goal = "Continue working on the current task in this new section."
+                        self.current_page_section = current_section
+                        self.last_reset_iteration = iteration
+                        return (True, progress_summary, next_goal)
+                    else:
+                        # Update tracking but don't reset yet
+                        self.current_page_section = current_section
+            else:
+                # Initialize current section if not set
+                if current_url and not self.current_page_section:
+                    section = re.search(r'/([^/?]+)', current_url)
+                    if section:
+                        self.current_page_section = section.group(1)
+
+        return (False, None, None)
+
+    def _auto_reset_context_if_needed(
+        self,
+        iteration: int,
+        page_text: Optional[str],
+        current_url: str
+    ):
+        """Automatically reset context if conditions are met.
+
+        Args:
+            iteration: Current iteration number
+            page_text: Current page text
+            current_url: Current URL
+        """
+        # Check if auto reset is enabled
+        if not self.auto_context_reset:
+            return
+
+        # Get current input token count
+        input_tokens = self.provider.stats.input_tokens if hasattr(self.provider, 'stats') else 0
+
+        should_reset, progress_summary, next_goal = self._should_auto_reset_context(
+            iteration=iteration,
+            page_text=page_text,
+            current_url=current_url,
+            input_tokens=input_tokens
+        )
+
+        if should_reset and progress_summary and next_goal:
+            self.console.print(f"\n[bold cyan]🔄 Automatic Context Reset Triggered[/bold cyan]")
+            self.console.print(f"[dim]Reason: Token optimization and milestone checkpoint[/dim]")
+
+            # Get current state
+            page_info = self.browser.get_page_info() if self.browser else {}
+            screenshot = self.browser.take_screenshot() if self.browser else None
+
+            # Perform reset
+            success = self.provider.reset_context(
+                progress_summary=progress_summary,
+                next_goal=next_goal,
+                current_screenshot=screenshot,
+                current_page_info=page_info
+            )
+
+            if success:
+                self.console.print(f"  [bold green]✓ Context reset successful![/bold green]")
+                self.console.print(f"  [dim]Progress: {progress_summary}[/dim]")
+                self.console.print(f"  [dim]Next: {next_goal}[/dim]\n")
+
+                # Log the reset
+                if self.logger:
+                    self.logger.log_event("auto_context_reset", {
+                        "iteration": iteration,
+                        "trigger": "automatic",
+                        "progress_summary": progress_summary,
+                        "next_goal": next_goal,
+                        "input_tokens_before": input_tokens
+                    })
+            else:
+                self.console.print(f"  [red]✗ Automatic context reset failed[/red]\n")
 
     def _format_action(self, action) -> str:
         """Format action for display.
