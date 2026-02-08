@@ -42,26 +42,31 @@ class DOMTool:
         selector = selector.strip()
 
         # Check for jQuery-style pseudo-selectors that aren't valid CSS
+        # Use word boundaries to avoid false positives (e.g., :first-child is valid, :first is not)
+        import re
+
         jquery_patterns = [
-            (":contains(", "Use text search or find_selectors instead. Example: find_selectors(search_text='START')"),
-            (":has(", "Not valid CSS. Use descendant selectors like 'parent child' instead"),
-            (":first", "Use :first-child or :first-of-type instead"),
-            (":last", "Use :last-child or :last-of-type instead"),
-            (":eq(", "Not valid CSS. Use :nth-child() or specific selectors instead"),
-            (":gt(", "Not valid CSS. Use :nth-child() instead"),
-            (":lt(", "Not valid CSS. Use :nth-child() instead"),
-            (":even", "Not valid CSS. Use :nth-child(even) instead"),
-            (":odd", "Not valid CSS. Use :nth-child(odd) instead"),
-            (":visible", "Not valid CSS. Most elements are visible by default"),
-            (":hidden", "Not valid CSS. Use [hidden] or check style directly"),
-            (":checked", "Valid CSS! But use input:checked for checkboxes/radios"),
+            (r":contains\(", "Use text search or find_selectors instead. Example: find_selectors(search_text='START')"),
+            (r":has\(", "Not valid CSS. Use descendant selectors like 'parent child' instead"),
+            (r":first(?!-)", "Use :first-child or :first-of-type instead"),  # :first but not :first-child
+            (r":last(?!-)", "Use :last-child or :last-of-type instead"),  # :last but not :last-child
+            (r":eq\(", "Not valid CSS. Use :nth-child() or specific selectors instead"),
+            (r":gt\(", "Not valid CSS. Use :nth-child() instead"),
+            (r":lt\(", "Not valid CSS. Use :nth-child() instead"),
+            (r":even\b", "Not valid CSS. Use :nth-child(even) instead"),
+            (r":odd\b", "Not valid CSS. Use :nth-child(odd) instead"),
+            (r":visible\b", "Not valid CSS. Most elements are visible by default"),
+            (r":hidden\b", "Not valid CSS. Use [hidden] or check style directly"),
         ]
 
         for pattern, suggestion in jquery_patterns:
-            if pattern in selector.lower():
+            if re.search(pattern, selector, re.IGNORECASE):
+                # Extract matched pattern for error message
+                match = re.search(pattern, selector, re.IGNORECASE)
+                matched_text = match.group(0) if match else pattern
                 return {
                     "valid": False,
-                    "error": f"Invalid jQuery selector '{pattern}' detected. {suggestion}"
+                    "error": f"Invalid jQuery selector '{matched_text}' detected. {suggestion}"
                 }
 
         # Check for overly generic single-tag selectors
