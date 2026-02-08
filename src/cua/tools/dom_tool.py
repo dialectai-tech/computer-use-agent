@@ -26,6 +26,57 @@ class DOMTool:
         """
         self.browser = browser
 
+    @staticmethod
+    def validate_selector(selector: str) -> Dict[str, Any]:
+        """Validate CSS selector and provide helpful errors.
+
+        Args:
+            selector: CSS selector string to validate
+
+        Returns:
+            Dictionary with 'valid' bool and 'error' string if invalid
+        """
+        if not selector or not selector.strip():
+            return {"valid": False, "error": "Selector is empty"}
+
+        selector = selector.strip()
+
+        # Check for jQuery-style pseudo-selectors that aren't valid CSS
+        jquery_patterns = [
+            (":contains(", "Use text search or find_selectors instead. Example: find_selectors(search_text='START')"),
+            (":has(", "Not valid CSS. Use descendant selectors like 'parent child' instead"),
+            (":first", "Use :first-child or :first-of-type instead"),
+            (":last", "Use :last-child or :last-of-type instead"),
+            (":eq(", "Not valid CSS. Use :nth-child() or specific selectors instead"),
+            (":gt(", "Not valid CSS. Use :nth-child() instead"),
+            (":lt(", "Not valid CSS. Use :nth-child() instead"),
+            (":even", "Not valid CSS. Use :nth-child(even) instead"),
+            (":odd", "Not valid CSS. Use :nth-child(odd) instead"),
+            (":visible", "Not valid CSS. Most elements are visible by default"),
+            (":hidden", "Not valid CSS. Use [hidden] or check style directly"),
+            (":checked", "Valid CSS! But use input:checked for checkboxes/radios"),
+        ]
+
+        for pattern, suggestion in jquery_patterns:
+            if pattern in selector.lower():
+                return {
+                    "valid": False,
+                    "error": f"Invalid jQuery selector '{pattern}' detected. {suggestion}"
+                }
+
+        # Check for overly generic single-tag selectors
+        single_tag_pattern = selector.lower().strip()
+        generic_tags = ['input', 'button', 'div', 'span', 'a', 'select', 'textarea', 'form', 'img']
+
+        if single_tag_pattern in generic_tags:
+            return {
+                "valid": False,
+                "error": f"Selector '{selector}' is too generic (matches multiple elements). Use find_selectors to get specific selector with ID/class. Example: button#submit or button.primary"
+            }
+
+        # Selector looks valid
+        return {"valid": True}
+
     def execute(self, action: DOMAction) -> Dict[str, Any]:
         """Execute a DOM manipulation action.
 
@@ -45,22 +96,68 @@ class DOMTool:
         if action_type == "click_selector":
             if not action.selector:
                 return {"success": False, "error": "Missing selector parameter"}
+
+            # Validate selector
+            validation = self.validate_selector(action.selector)
+            if not validation["valid"]:
+                return {"success": False, "error": validation["error"]}
+
             return self.browser.click_selector(action.selector)
 
         elif action_type == "fill_selector":
             if not action.selector or not action.text:
                 return {"success": False, "error": "Missing selector or text parameter"}
+
+            # Validate selector
+            validation = self.validate_selector(action.selector)
+            if not validation["valid"]:
+                return {"success": False, "error": validation["error"]}
+
             return self.browser.fill_selector(action.selector, action.text)
 
         elif action_type == "get_info":
             if not action.selector:
                 return {"success": False, "error": "Missing selector parameter"}
+
+            # Validate selector
+            validation = self.validate_selector(action.selector)
+            if not validation["valid"]:
+                return {"success": False, "error": validation["error"]}
+
             return self.browser.get_element_info(action.selector)
 
         elif action_type == "find_selectors":
             if not action.search_text:
                 return {"success": False, "error": "Missing search_text parameter"}
-            return self.browser.find_selectors_by_text(action.search_text, action.limit)
+
+            result = self.browser.find_selectors_by_text(action.search_text, action.limit)
+
+            # Enhance response with recommended selector
+            if result.get("success") and result.get("matches"):
+                matches = result["matches"]
+
+                # Pick best selector (prefer ID, then class, then tag)
+                best_selector = None
+                for match in matches:
+                    selector = match.get("selector", "")
+                    if '#' in selector:
+                        best_selector = selector
+                        break
+                    elif '.' in selector and not best_selector:
+                        best_selector = selector
+                    elif not best_selector:
+                        best_selector = selector
+
+                result["recommended_selector"] = best_selector
+                result["message"] = f"Found {len(matches)} match(es). Use: {best_selector}"
+
+                # Add helpful summary
+                if len(matches) == 1:
+                    result["summary"] = f"✓ Found 1 element. Next: click_selector(selector='{best_selector}')"
+                else:
+                    result["summary"] = f"✓ Found {len(matches)} elements. Use first: click_selector(selector='{best_selector}')"
+
+            return result
 
         elif action_type == "evaluate_js":
             if not action.script:
@@ -87,8 +184,18 @@ DOM_TOOL_DEFINITION = {
 5. "evaluate_js" - Run JavaScript (advanced)
 
 **Common workflow:**
-1. find_selectors(search_text="START") → returns selector like "button.start"
-2. click_selector(selector="button.start") → clicks it directly
+1. find_selectors(search_text="START") → returns {"recommended_selector": "button#start"}
+2. Use the recommended_selector: click_selector(selector="button#start")
+
+**Important**: find_selectors returns a "recommended_selector" field - USE IT in the next action!
+
+**Selector Requirements:**
+- MUST be valid CSS selectors (NOT jQuery!)
+- DON'T use: :contains(), :has(), :visible, :hidden, :eq(), :first, :last, :even, :odd
+- DO use: #id, .class, [attribute], :first-child, :nth-child(), element.class
+- AVOID generic tags alone (button, input, div) - use find_selectors to get specific selector
+- GOOD: button#submit, .btn-primary, input[type="text"], div.container > p:first-child
+- BAD: button:contains('text'), input, div:has(span), :visible
 
 **Note**: Use "click_selector" not "click", and "fill_selector" not "fill"!""",
     "input_schema": {

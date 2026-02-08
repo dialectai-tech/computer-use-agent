@@ -870,9 +870,10 @@ WRONG: Calling browser_find without search_term parameter
                 # Manage context window (prune old screenshots)
                 self._manage_context_window()
 
-                # Log context stats
+                # Log context stats (note: screenshot_history is for internal tracking, only latest sent to API)
                 non_transient_count = sum(1 for item in self.screenshot_history if not item.get("transient", False))
-                self.console.print(f"  [dim]Context: {len(self.screenshot_history)} screenshots ({non_transient_count} important)[/dim]")
+                # self.console.print(f"  [dim]Screenshot history: {len(self.screenshot_history)} tracked ({non_transient_count} important) | API sends: 1 latest[/dim]")
+                # Note: Removed confusing display - screenshot optimization sends only latest to API
 
                 # Log this iteration
                 if self.logger:
