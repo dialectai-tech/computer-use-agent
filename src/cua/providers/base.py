@@ -39,6 +39,58 @@ class Action:
 
 
 @dataclass
+class ActionEvidence:
+    """Evidence captured after executing an action.
+
+    Used for multi-action support where each action in a response gets
+    its own evidence (screenshot, page text, result) so the AI can see
+    intermediate states, not just the final state.
+    """
+    action_id: str
+    action_type: ActionType
+    result: Dict[str, Any]  # Action execution result
+    screenshot: Optional[bytes] = None  # Screenshot after action (if visual change)
+    page_text: Optional[str] = None  # Page text if URL changed
+    url: Optional[str] = None  # URL after action
+    timestamp: float = None  # When action completed
+
+    def __post_init__(self):
+        if self.timestamp is None:
+            self.timestamp = time.time()
+
+
+def requires_screenshot(action: Action) -> bool:
+    """Determine if an action requires screenshot evidence.
+
+    Args:
+        action: The action to check
+
+    Returns:
+        True if the action needs a screenshot, False otherwise
+    """
+    # Non-visual actions that don't need screenshots
+    if action.type in (ActionType.SEARCH, ActionType.CONTEXT_RESET):
+        return False
+
+    # All other actions are visual or may change page state
+    return True
+
+
+def requires_page_text_capture(old_url: str, new_url: str) -> bool:
+    """Determine if page text should be captured based on URL change.
+
+    Args:
+        old_url: URL before action
+        new_url: URL after action
+
+    Returns:
+        True if page text should be captured, False otherwise
+    """
+    # Only capture page text when URL changes
+    return old_url != new_url
+
+
+@dataclass
 class ProviderStats:
     """Statistics for provider API usage."""
     api_calls: int = 0

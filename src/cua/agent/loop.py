@@ -9,7 +9,13 @@ from typing import Optional
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from cua.providers.base import ComputerUseProvider, ActionType
+from cua.providers.base import (
+    ComputerUseProvider,
+    ActionType,
+    ActionEvidence,
+    requires_screenshot,
+    requires_page_text_capture
+)
 from cua.browser.playwright_controller import PlaywrightController
 from cua.tools.search_tool import SearchTool
 from cua.utils.logger import AgentLogger
@@ -58,7 +64,9 @@ class ComputerUseAgent:
         two_phase_workflow: bool = False,
         max_message_turns: int = 10,
         auto_context_reset: bool = True,
-        auto_reset_token_threshold: int = 30000
+        auto_reset_token_threshold: int = 30000,
+        multi_action_evidence: bool = True,
+        max_actions_per_response: int = 10
     ):
         """Initialize agent.
 
@@ -81,11 +89,15 @@ class ComputerUseAgent:
             max_message_turns: Maximum number of message turns to keep in history
             auto_context_reset: Enable automatic context reset at milestones
             auto_reset_token_threshold: Input token threshold for automatic reset
+            multi_action_evidence: Capture per-action evidence (screenshots, page text) for multi-action responses
+            max_actions_per_response: Maximum number of actions to execute in a single response (0 = unlimited)
         """
         self.provider = provider
         self.max_message_turns = max_message_turns
         self.auto_context_reset = auto_context_reset
         self.auto_reset_token_threshold = auto_reset_token_threshold
+        self.multi_action_evidence = multi_action_evidence
+        self.max_actions_per_response = max_actions_per_response
 
         # Pass max_message_turns to provider if it supports it
         if hasattr(self.provider, 'max_message_turns'):
