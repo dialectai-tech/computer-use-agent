@@ -838,14 +838,6 @@ WRONG: Calling browser_find without search_term parameter
                 # Manage context window (prune old screenshots)
                 self._manage_context_window()
 
-                # Check if automatic context reset should be triggered
-                current_url = self.browser.get_page_info().get('url', '') if self.browser else ''
-                self._auto_reset_context_if_needed(
-                    iteration=iteration + 1,
-                    page_text=page_text if self.use_page_text else None,
-                    current_url=current_url
-                )
-
                 # Log context stats
                 non_transient_count = sum(1 for item in self.screenshot_history if not item.get("transient", False))
                 self.console.print(f"  [dim]Context: {len(self.screenshot_history)} screenshots ({non_transient_count} important)[/dim]")
@@ -966,6 +958,16 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
                 )
                 self.cumulative_token_stats.add_iteration(breakdown)
                 print_token_stats(iteration + 1, breakdown, self.cumulative_token_stats, self.console)
+
+                # Check if automatic context reset should be triggered
+                # (Must be after breakdown calculation to use current iteration's token count)
+                current_url = self.browser.get_page_info().get('url', '') if self.browser else ''
+                self._auto_reset_context_if_needed(
+                    iteration=iteration + 1,
+                    page_text=page_text if self.use_page_text else None,
+                    current_url=current_url,
+                    current_input_tokens=breakdown.total_input_tokens
+                )
 
                 # Dump conversation to JSON
                 self._dump_conversation(iteration + 1)
@@ -1224,7 +1226,8 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
         self,
         iteration: int,
         page_text: Optional[str],
-        current_url: str
+        current_url: str,
+        current_input_tokens: int
     ):
         """Automatically reset context if conditions are met.
 
@@ -1232,19 +1235,20 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
             iteration: Current iteration number
             page_text: Current page text
             current_url: Current URL
+            current_input_tokens: Input token count for current iteration
         """
         # Check if auto reset is enabled
         if not self.auto_context_reset:
             return
 
-        # Get current input token count
-        input_tokens = self.provider.stats.input_tokens if hasattr(self.provider, 'stats') else 0
+        # Debug logging for auto-reset detection
+        print(f"[DEBUG AUTO-RESET] Iteration {iteration}: Checking with {current_input_tokens:,} tokens (threshold: {self.auto_reset_token_threshold:,})")
 
         should_reset, progress_summary, next_goal = self._should_auto_reset_context(
             iteration=iteration,
             page_text=page_text,
             current_url=current_url,
-            input_tokens=input_tokens
+            input_tokens=current_input_tokens
         )
 
         if should_reset and progress_summary and next_goal:
