@@ -437,8 +437,9 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                     page_text = None
                     if self.use_page_text:
                         current_url = self.browser.get_page_info().get('url', '')
+                        page_text = self.browser.get_page_text()
+                        # Track URL changes for logging
                         if current_url != self.last_page_url:
-                            page_text = self.browser.get_page_text()
                             self.last_page_url = current_url
 
                     # Get fresh response (continuation will properly handle the reset state)
@@ -595,8 +596,9 @@ Take a screenshot, analyze the current state, and proceed with the next step of 
                     page_text = None
                     if self.use_page_text:
                         current_url = self.browser.get_page_info().get('url', '')
+                        page_text = self.browser.get_page_text()
+                        # Track URL changes for logging
                         if current_url != self.last_page_url:
-                            page_text = self.browser.get_page_text()
                             self.last_page_url = current_url
 
                     # Build explicit instruction for retry
@@ -805,8 +807,9 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                     page_text = None
                     if self.use_page_text:
                         current_url = self.browser.get_page_info().get('url', '')
+                        page_text = self.browser.get_page_text()
+                        # Track URL changes for logging
                         if current_url != self.last_page_url:
-                            page_text = self.browser.get_page_text()
                             self.last_page_url = current_url
 
                     # Build phase 2 prompt with search results
@@ -867,16 +870,16 @@ WRONG: Calling browser_find without search_term parameter
                 if self.use_accessibility_tree:
                     accessibility_tree = self.browser.get_accessibility_tree()
 
-                # Get page text ONLY when page navigation occurs (URL changed)
-                # This avoids sending the same page text repeatedly
+                # Get page text if enabled (needed after message pruning to restore context)
                 page_text = None
                 if self.use_page_text:
                     current_url = self.browser.get_page_info().get('url', '')
+                    page_text = self.browser.get_page_text()
+
+                    # Track URL changes for logging
                     if current_url != self.last_page_url:
-                        page_text = self.browser.get_page_text()
                         self.last_page_url = current_url
                         self.console.print(f"  [dim]📄 Page navigated to: {current_url[:60]}... (fetching page text)[/dim]")
-                    # else: page_text stays None - no navigation, don't re-send
 
                 # Get response text and extract memory signals
                 response_text = self.provider.get_response_text(response)

@@ -637,21 +637,19 @@ class BedrockProvider(ComputerUseProvider):
                 else:
                     result_content = [{"text": "Search completed but no results available"}]
             elif tool_name == "computer":
-                # Return just screenshot for most computer actions
-                # Page text and tree are only needed after search or on explicit request
+                # Return screenshot + page text (if page changed or after pruning)
                 result_content = []
 
-                # Only add accessibility tree if explicitly requested (not by default)
-                # This saves significant tokens - tree is only useful for debugging
-                # if accessibility_tree and not accessibility_tree.get("error"):
-                #     import json
-                #     tree_text = f"**Tree:**\n```json\n{json.dumps(accessibility_tree, indent=2)}\n```\n"
-                #     result_content.append({"text": tree_text})
+                # Add page text if provided (sent when page navigates or to restore context after pruning)
+                if page_text:
+                    # Truncate if too long to avoid token explosion
+                    max_text_length = 10000  # ~2500 tokens
+                    truncated_text = page_text[:max_text_length]
+                    if len(page_text) > max_text_length:
+                        truncated_text += f"\n\n[... text truncated, {len(page_text) - max_text_length} more characters ...]"
 
-                # OPTIMIZATION: Do NOT send page text with every action
-                # Page text is already available to AI via search_page_content
-                # Only send it with initial request or after page loads
-                # This saves ~2,500 tokens per action!
+                    text_section = f"\n\n**Page Text (Current Page):**\n```\n{truncated_text}\n```\n"
+                    result_content.append({"text": text_section})
 
                 # Return screenshot as image (for visual reference)
                 screenshot_bytes = base64.b64decode(screenshot)
