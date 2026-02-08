@@ -637,28 +637,14 @@ class BedrockProvider(ComputerUseProvider):
                 else:
                     result_content = [{"text": "Search completed but no results available"}]
             elif tool_name == "computer":
-                # Return screenshot + page text (if page changed or after pruning)
-                result_content = []
-
-                # Add page text if provided (sent when page navigates or to restore context after pruning)
-                if page_text:
-                    # Truncate if too long to avoid token explosion
-                    max_text_length = 10000  # ~2500 tokens
-                    truncated_text = page_text[:max_text_length]
-                    if len(page_text) > max_text_length:
-                        truncated_text += f"\n\n[... text truncated, {len(page_text) - max_text_length} more characters ...]"
-
-                    text_section = f"\n\n**Page Text (Current Page):**\n```\n{truncated_text}\n```\n"
-                    result_content.append({"text": text_section})
-
-                # Return screenshot as image (for visual reference)
+                # Return screenshot (page text is added globally after all tool results)
                 screenshot_bytes = base64.b64decode(screenshot)
-                result_content.append({
+                result_content = [{
                     "image": {
                         "format": "png",
                         "source": {"bytes": screenshot_bytes}
                     }
-                })
+                }]
             elif tool_name == "browser_find":
                 # Return browser find result with updated screenshot
                 message = action_result.get("message", "") if action_result else "Browser find completed"
@@ -707,6 +693,17 @@ class BedrockProvider(ComputerUseProvider):
                     "content": result_content
                 }
             })
+
+        # Add page text AFTER all tool results to maintain context (especially after pruning)
+        if page_text:
+            # Truncate if too long to avoid token explosion
+            max_text_length = 10000  # ~2500 tokens
+            truncated_text = page_text[:max_text_length]
+            if len(page_text) > max_text_length:
+                truncated_text += f"\n\n[... text truncated, {len(page_text) - max_text_length} more characters ...]"
+
+            text_section = f"\n\n**Page Text (Current Page):**\n```\n{truncated_text}\n```\n"
+            tool_result_content.append({"text": text_section})
 
         # Inject additional instruction as text AFTER all tool results if provided
         if additional_instruction:
