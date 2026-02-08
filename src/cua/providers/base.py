@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 import time
+import difflib
 
 
 class ActionType(Enum):
@@ -51,6 +52,7 @@ class ActionEvidence:
     result: Dict[str, Any]  # Action execution result
     screenshot: Optional[bytes] = None  # Screenshot after action (if visual change)
     page_text: Optional[str] = None  # Page text if URL changed
+    page_text_diff: Optional[str] = None  # Diff of page text changes (compact summary of what changed)
     url: Optional[str] = None  # URL after action
     timestamp: float = None  # When action completed
 
@@ -88,6 +90,82 @@ def requires_page_text_capture(old_url: str, new_url: str) -> bool:
     """
     # Only capture page text when URL changes
     return old_url != new_url
+
+
+def compute_page_text_diff(old_text: str, new_text: str, max_lines: int = 50) -> Optional[str]:
+    """Compute a compact diff between two page texts.
+
+    Creates a unified diff showing what changed, optimized for LLM consumption.
+    Limits output to most significant changes to avoid token explosion.
+
+    Args:
+        old_text: Previous page text
+        new_text: New page text
+        max_lines: Maximum number of diff lines to return (default: 50)
+
+    Returns:
+        Compact diff string, or None if texts are identical or both empty
+    """
+    if not old_text and not new_text:
+        return None
+
+    if old_text == new_text:
+        return None
+
+    # Handle case where one is empty
+    if not old_text:
+        lines = new_text.split('\n')[:max_lines]
+        return f"+ Added {len(new_text.split(chr(10)))} lines:\n" + '\n'.join(f"+ {line[:100]}" for line in lines[:10])
+
+    if not new_text:
+        lines = old_text.split('\n')[:max_lines]
+        return f"- Removed {len(old_text.split(chr(10)))} lines:\n" + '\n'.join(f"- {line[:100]}" for line in lines[:10])
+
+    # Compute unified diff
+    old_lines = old_text.split('\n')
+    new_lines = new_text.split('\n')
+
+    # Use unified diff format (compact)
+    diff_lines = list(difflib.unified_diff(
+        old_lines,
+        new_lines,
+        lineterm='',
+        n=1  # Context lines (minimal for compactness)
+    ))
+
+    if not diff_lines:
+        return None
+
+    # Filter out file headers and keep only actual changes
+    significant_lines = []
+    added_count = 0
+    removed_count = 0
+
+    for line in diff_lines:
+        if line.startswith('+++') or line.startswith('---') or line.startswith('@@'):
+            continue  # Skip headers
+
+        if line.startswith('+'):
+            added_count += 1
+            if len(significant_lines) < max_lines:
+                # Truncate long lines
+                significant_lines.append(line[:150])
+        elif line.startswith('-'):
+            removed_count += 1
+            if len(significant_lines) < max_lines:
+                significant_lines.append(line[:150])
+
+    if not significant_lines:
+        return None
+
+    # Create compact summary
+    summary = f"📝 Page text changes (+{added_count} added, -{removed_count} removed):\n"
+    summary += '\n'.join(significant_lines[:max_lines])
+
+    if len(significant_lines) > max_lines:
+        summary += f"\n... ({len(significant_lines) - max_lines} more changes not shown)"
+
+    return summary
 
 
 @dataclass

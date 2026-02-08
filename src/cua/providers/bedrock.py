@@ -862,6 +862,10 @@ class BedrockProvider(ComputerUseProvider):
             else:
                 result_content = [{"text": "success"}]
 
+            # Add page text diff if available (shows what changed on the page)
+            if action_evidence and action_evidence.page_text_diff:
+                result_content.append({"text": f"\n{action_evidence.page_text_diff}"})
+
             tool_result_content.append({
                 "toolResult": {
                     "toolUseId": tool_id,

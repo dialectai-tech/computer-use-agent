@@ -14,7 +14,8 @@ from cua.providers.base import (
     ActionType,
     ActionEvidence,
     requires_screenshot,
-    requires_page_text_capture
+    requires_page_text_capture,
+    compute_page_text_diff
 )
 from cua.browser.playwright_controller import PlaywrightController
 from cua.tools.search_tool import SearchTool
@@ -678,6 +679,7 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                 # Multi-action evidence collection: Store evidence per action
                 action_evidence_map = {}
                 last_url = self.browser.get_page_info().get('url', '') if hasattr(self.browser, 'get_page_info') else ''
+                last_page_text = self.browser.get_page_text() if hasattr(self.browser, 'get_page_text') else ''
 
                 for action in actions:
                     action_desc = self._format_action(action)
@@ -807,10 +809,20 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                             action_screenshot = self.browser.take_screenshot()
                             self.provider.stats.add_screenshot()
 
-                        # Capture page text only if URL changed
+                        # Capture page text and compute diff if URL changed
                         action_page_text = None
+                        action_page_text_diff = None
                         if self.use_page_text and requires_page_text_capture(last_url, current_url):
                             action_page_text = self.browser.get_page_text()
+
+                            # Compute diff to show what changed
+                            if last_page_text and action_page_text:
+                                action_page_text_diff = compute_page_text_diff(last_page_text, action_page_text)
+                                if action_page_text_diff:
+                                    self.console.print(f"  [dim]📝 Page text changed ({len(action_page_text_diff)} chars diff)[/dim]")
+
+                            # Update last page text for next action
+                            last_page_text = action_page_text
 
                         # Store evidence for this action
                         evidence = ActionEvidence(
@@ -819,6 +831,7 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                             result=result,
                             screenshot=action_screenshot,
                             page_text=action_page_text,
+                            page_text_diff=action_page_text_diff,
                             url=current_url
                         )
                         action_evidence_map[action.id] = evidence
