@@ -357,4 +357,13 @@ elif hasattr(self.provider, 'stats') and self.provider.stats:
     breakdown.total_output_tokens = self.provider.stats.output_tokens
 ```
 
-**Verification**: 🧪 PENDING - Test with haiku + 10 iterations to confirm
+**Verification**: ✅ TESTED (2026-02-08 13:02)
+Test run with haiku, 10 iterations, auto-reset threshold 20K:
+- Iteration 1: 5,566 tokens (correct initial)
+- Iteration 2: 2,737 tokens (reduced correctly)
+- Iteration 5: 1,843 tokens (after pruning)
+- Iteration 8: 4,398 tokens (after page navigation with page_text)
+- Iteration 11: 5,722 tokens (reasonable growth)
+- Total: 43,843 input tokens across 11 calls (~3,986 avg)
+- No more cumulative inflation
+- Auto-reset threshold check using correct per-call tokens
