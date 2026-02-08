@@ -357,8 +357,10 @@ class BedrockProvider(ComputerUseProvider):
             })
 
         # Build new message list: first message + checkpoint
+        # Use a copy of first_user_message so subsequent stripping doesn't affect the stored version
+        import copy
         new_messages = [
-            first_user_message,
+            copy.deepcopy(first_user_message),
             {
                 "role": "user",
                 "content": checkpoint_content
@@ -367,7 +369,10 @@ class BedrockProvider(ComputerUseProvider):
 
         # Replace message history
         self.messages = new_messages
-        self.first_user_message = first_user_message
+        # Ensure first_user_message stays as the deep copy (don't overwrite with reference)
+        if not self.first_user_message:
+            import copy
+            self.first_user_message = copy.deepcopy(first_user_message)
 
         # Clear last tool uses since we're starting fresh
         self.last_tool_uses = []
