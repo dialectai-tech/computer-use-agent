@@ -695,6 +695,13 @@ class BedrockProvider(ComputerUseProvider):
         if additional_instruction:
             tool_result_content.append({"text": additional_instruction})
 
+        # AWS Bedrock rejects empty content arrays
+        # If there are no tool results (e.g., after context reset), add current state as text
+        if len(tool_result_content) == 0:
+            tool_result_content.append({
+                "text": "Continuing from current state. Please analyze the screenshot and proceed."
+            })
+
         # Add tool results as user message (with optional instruction appended)
         self.messages.append({
             "role": "user",

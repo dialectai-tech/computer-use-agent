@@ -120,6 +120,7 @@ class ComputerUseAgent:
         self.last_reset_iteration = 0  # Track when we last reset context
         self.last_milestone_step = 0  # Track last completed step number
         self.current_page_section = None  # Track current page section for navigation detection
+        self.just_reset = False  # Flag to indicate reset just happened, skip continuation
 
         # Pass configuration to provider
         self.provider.enable_caching = enable_caching
@@ -399,6 +400,37 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                 iteration += 1
 
                 self.console.print(f"[bold]Iteration {iteration}/{max_iterations}[/bold]")
+
+                # If we just reset context, start fresh instead of continuing from previous state
+                if self.just_reset:
+                    self.just_reset = False  # Clear the flag
+                    self.console.print(f"[dim]Starting fresh iteration after context reset...[/dim]")
+
+                    # Take fresh screenshot and get new response
+                    screenshot = self.browser.take_screenshot()
+                    self.provider.stats.add_screenshot()
+                    accessibility_tree = self.browser.get_accessibility_tree() if self.use_accessibility_tree else None
+
+                    # Get page text only if URL changed
+                    page_text = None
+                    if self.use_page_text:
+                        current_url = self.browser.get_page_info().get('url', '')
+                        if current_url != self.last_page_url:
+                            page_text = self.browser.get_page_text()
+                            self.last_page_url = current_url
+
+                    # Get fresh response (continuation will properly handle the reset state)
+                    response = self.provider.create_continuation_request(
+                        screenshot=screenshot,
+                        accessibility_tree=accessibility_tree if self.use_accessibility_tree else None,
+                        page_text=page_text if self.use_page_text else None,
+                        search_results=None,
+                        display_width=self.display_width,
+                        display_height=self.display_height,
+                        additional_instruction=None
+                    )
+                    # Continue to next iteration to process this response normally
+                    continue
 
                 # Check if task is complete
                 if self.provider.is_task_complete(response):
@@ -1271,6 +1303,9 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
                 self.console.print(f"  [bold green]✓ Context reset successful![/bold green]")
                 self.console.print(f"  [dim]Progress: {progress_summary}[/dim]")
                 self.console.print(f"  [dim]Next: {next_goal}[/dim]\n")
+
+                # Set flag to indicate we just reset, so loop should start fresh
+                self.just_reset = True
 
                 # Log the reset
                 if self.logger:
