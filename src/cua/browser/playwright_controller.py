@@ -292,46 +292,56 @@ class PlaywrightController:
                     # Claude format: key with text
                     key_text = action.params["text"]
 
-                    # Handle keyboard shortcuts (Ctrl+Home, Ctrl+End, etc.)
-                    if "+" in key_text and " " not in key_text:
-                        # Parse key combination (e.g., "Control+Home", "ctrl+a")
-                        parts = [p.strip().lower() for p in key_text.split("+")]
-                        modifiers = []
-                        main_key = parts[-1]
+                    # Helper function to press a single key or key combo
+                    def press_single_key_or_combo(key_str: str):
+                        """Press a single key or key combination like 'Ctrl+Home'."""
+                        key_str = key_str.strip()
+                        if not key_str:
+                            return
 
-                        for part in parts[:-1]:
-                            if part in ["ctrl", "control"]:
-                                modifiers.append("Control")
-                            elif part in ["shift"]:
-                                modifiers.append("Shift")
-                            elif part in ["alt"]:
-                                modifiers.append("Alt")
-                            elif part in ["meta", "cmd", "command"]:
-                                modifiers.append("Meta")
+                        if "+" in key_str:
+                            # Key combination (e.g., "Ctrl+Home", "Shift+Tab")
+                            parts = [p.strip().lower() for p in key_str.split("+")]
+                            modifiers = []
+                            main_key = parts[-1]
 
-                        # Map the main key
-                        main_key = self._map_key(main_key)
+                            for part in parts[:-1]:
+                                if part in ["ctrl", "control"]:
+                                    modifiers.append("Control")
+                                elif part in ["shift"]:
+                                    modifiers.append("Shift")
+                                elif part in ["alt"]:
+                                    modifiers.append("Alt")
+                                elif part in ["meta", "cmd", "command"]:
+                                    modifiers.append("Meta")
 
-                        # Press modifiers down
-                        for mod in modifiers:
-                            self.page.keyboard.down(mod)
+                            # Map the main key
+                            main_key = self._map_key(main_key)
 
-                        # Press main key
-                        self.page.keyboard.press(main_key)
+                            # Press modifiers down
+                            for mod in modifiers:
+                                self.page.keyboard.down(mod)
 
-                        # Release modifiers
-                        for mod in reversed(modifiers):
-                            self.page.keyboard.up(mod)
-                    elif " " in key_text:
-                        # Multiple space-separated keys (e.g., "down down down" or "Tab Return")
-                        # Split and press each key sequentially
+                            # Press main key
+                            self.page.keyboard.press(main_key)
+
+                            # Release modifiers
+                            for mod in reversed(modifiers):
+                                self.page.keyboard.up(mod)
+                        else:
+                            # Single key press
+                            self.page.keyboard.press(self._map_key(key_str))
+
+                    # Handle space-separated keys (could be single keys, combos, or mix)
+                    if " " in key_text:
+                        # Multiple keys/combos (e.g., "down down down", "Tab Return", "Ctrl+Home Ctrl+End")
                         keys = key_text.split()
                         for key in keys:
-                            self.page.keyboard.press(self._map_key(key.strip()))
+                            press_single_key_or_combo(key)
                             time.sleep(0.1)  # Small delay between key presses
                     else:
-                        # Single key press
-                        self.page.keyboard.press(self._map_key(key_text))
+                        # Single key or combo
+                        press_single_key_or_combo(key_text)
 
                 elif "keys" in action.params:
                     # OpenAI format: keypress with keys array

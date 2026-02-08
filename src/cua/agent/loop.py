@@ -247,6 +247,9 @@ class ComputerUseAgent:
                 "zoom": self.zoom,
                 "use_accessibility_tree": self.use_accessibility_tree,
                 "use_page_text": self.use_page_text,
+                "use_dom_manipulation": self.use_dom_manipulation,
+                "use_search_tool": self.use_search_tool,
+                "use_find_tool": self.use_find_tool,
                 "context_window_size": self.context_window_size,
                 "two_phase_workflow": self.two_phase_workflow,
                 "max_message_turns": self.max_message_turns,
@@ -916,7 +919,7 @@ WRONG: Calling browser_find without search_term parameter
 
                     context_info = {
                         "phase": self.current_phase if self.two_phase_workflow else "normal",
-                        "screenshots_in_context": len(self.screenshot_history),
+                        "screenshots_tracked": len(self.screenshot_history),
                         "non_transient_screenshots": non_transient_count,
                         "input_tokens": self.provider.stats.input_tokens,
                         "output_tokens": self.provider.stats.output_tokens,
