@@ -396,8 +396,10 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
 
                     # Check for multi-step progress indicators (Step X of Y, Task X/Y, etc.)
                     import re
-                    step_match = re.search(r'Step\s+(\d+)\s+of\s+(\d+)', page_text, re.IGNORECASE)
-                    task_match = re.search(r'Task\s+(\d+)\s*/\s*(\d+)', page_text, re.IGNORECASE)
+                    # Use empty string if page_text is None (no navigation occurred)
+                    page_text_str = page_text or ""
+                    step_match = re.search(r'Step\s+(\d+)\s+of\s+(\d+)', page_text_str, re.IGNORECASE)
+                    task_match = re.search(r'Task\s+(\d+)\s*/\s*(\d+)', page_text_str, re.IGNORECASE)
 
                     is_truly_complete = True
                     completion_message = text
@@ -887,8 +889,10 @@ Try a DIFFERENT approach:
                 if iteration % 5 == 0:
                     # Check for progress indicators in current page
                     import re
-                    step_match = re.search(r'Step\s+(\d+)\s+of\s+(\d+)', page_text, re.IGNORECASE)
-                    task_match = re.search(r'Task\s+(\d+)\s*/\s*(\d+)', page_text, re.IGNORECASE)
+                    # Use empty string if page_text is None (no navigation occurred)
+                    page_text_str = page_text or ""
+                    step_match = re.search(r'Step\s+(\d+)\s+of\s+(\d+)', page_text_str, re.IGNORECASE)
+                    task_match = re.search(r'Task\s+(\d+)\s*/\s*(\d+)', page_text_str, re.IGNORECASE)
 
                     if step_match:
                         current_step = int(step_match.group(1))
