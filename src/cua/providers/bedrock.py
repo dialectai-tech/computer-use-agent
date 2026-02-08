@@ -256,47 +256,51 @@ class BedrockProvider(ComputerUseProvider):
             self.messages = messages_to_keep
             print(f"[DEBUG PRUNING] No first_user_message stored")
 
-        # Strip screenshots from all messages except the most recent one
+        # Strip screenshots from all messages except the most recent 2
+        # (Keep recent assistant response + current user message intact)
         # This keeps AI responses (text) but discards old screenshots to save tokens
-        if len(self.messages) > 1:
+        if len(self.messages) > 2:
             screenshot_count_before = 0
             screenshot_count_after = 0
 
             # Count screenshots before stripping
-            for msg in self.messages[:-1]:  # All except last
+            for msg in self.messages[:-2]:  # All except last 2
                 if "content" in msg and isinstance(msg["content"], list):
                     for block in msg["content"]:
                         if isinstance(block, dict) and "image" in block:
                             screenshot_count_before += 1
 
             # Strip screenshots from old messages (keep text, tool results, etc.)
-            for msg in self.messages[:-1]:  # All except last
+            for msg in self.messages[:-2]:  # All except last 2
                 if "content" in msg and isinstance(msg["content"], list):
-                    # Filter out image blocks, keep everything else
-                    msg["content"] = [
+                    # Check if message has non-image content
+                    non_image_blocks = [
                         block for block in msg["content"]
                         if not (isinstance(block, dict) and "image" in block)
                     ]
 
-                    # AWS Bedrock rejects empty content arrays, add placeholder if needed
-                    if len(msg["content"]) == 0:
-                        msg["content"] = [{"text": "[Screenshot removed for token optimization]"}]
+                    # Only strip screenshots if there's other content to preserve
+                    # (AWS Bedrock rejects empty content arrays)
+                    if len(non_image_blocks) > 0:
+                        msg["content"] = non_image_blocks
+                    # else: Keep the screenshot to avoid empty content
 
             # Count screenshots after stripping
-            for msg in self.messages[:-1]:  # All except last
+            for msg in self.messages[:-2]:  # All except last 2
                 if "content" in msg and isinstance(msg["content"], list):
                     for block in msg["content"]:
                         if isinstance(block, dict) and "image" in block:
                             screenshot_count_after += 1
 
-            # Count screenshots in most recent message
+            # Count screenshots in most recent messages
             recent_screenshots = 0
-            if "content" in self.messages[-1] and isinstance(self.messages[-1]["content"], list):
-                for block in self.messages[-1]["content"]:
-                    if isinstance(block, dict) and "image" in block:
-                        recent_screenshots += 1
+            for msg in self.messages[-2:]:  # Last 2 messages
+                if "content" in msg and isinstance(msg["content"], list):
+                    for block in msg["content"]:
+                        if isinstance(block, dict) and "image" in block:
+                            recent_screenshots += 1
 
-            print(f"[DEBUG PRUNING] Screenshots stripped: {screenshot_count_before} → {screenshot_count_after} (kept {recent_screenshots} in most recent)")
+            print(f"[DEBUG PRUNING] Screenshots stripped: {screenshot_count_before} → {screenshot_count_after} (kept {recent_screenshots} in last 2 messages)")
 
         print(f"[DEBUG PRUNING] After: {len(self.messages)} messages")
         print(f"[DEBUG PRUNING] ---")
