@@ -181,55 +181,94 @@ DOM_TOOL_DEFINITION = {
     "name": "dom_manipulation",
     "description": """Direct DOM manipulation using CSS selectors - 10-100x faster than coordinates!
 
-**IMPORTANT**: action_type must be EXACTLY one of these 5 values:
-1. "find_selectors" - Find CSS selectors by searching for text
-2. "click_selector" - Click using CSS selector (NOT "click"!)
-3. "fill_selector" - Fill input using CSS selector (NOT "fill"!)
-4. "get_info" - Get element info (visible, text, value)
-5. "evaluate_js" - Run JavaScript (advanced)
+**REQUIRED Parameters:**
+- action_type: (string, REQUIRED) Must be EXACTLY one of these 5 values:
+  1. "find_selectors" - Find CSS selectors by searching for text
+  2. "click_selector" - Click element using CSS selector (NOT "click"!)
+  3. "fill_selector" - Fill input field using CSS selector (NOT "fill"!)
+  4. "get_info" - Get element info (visible, text, value)
+  5. "evaluate_js" - Run JavaScript (advanced, rarely needed)
 
-**Common workflow:**
-1. find_selectors(search_text="START") → returns {"recommended_selector": "button#start"}
-2. Use the recommended_selector: click_selector(selector="button#start")
+**Example Usage:**
 
-**Important**: find_selectors returns a "recommended_selector" field - USE IT in the next action!
+1. Find selectors by text:
+   dom_manipulation(action_type="find_selectors", search_text="START", limit=5)
+   Returns: {"recommended_selector": "button#start", "matches": [...]}
+
+2. Click using selector:
+   dom_manipulation(action_type="click_selector", selector="button#start")
+   Returns: ✓ Element clicked
+
+3. Fill input field:
+   dom_manipulation(action_type="fill_selector", selector="input#code", text="ABC123")
+   Returns: ✓ Text entered
+
+**Common Workflow:**
+Step 1: find_selectors(search_text="START")
+        → Get recommended_selector: "button#start"
+Step 2: click_selector(selector="button#start")
+        → Click the button
+
+**IMPORTANT**: Always use the "recommended_selector" from find_selectors results!
 
 **Selector Requirements:**
-- MUST be valid CSS selectors (NOT jQuery!)
-- DON'T use: :contains(), :has(), :visible, :hidden, :eq(), :first, :last, :even, :odd
-- DO use: #id, .class, [attribute], :first-child, :nth-child(), element.class
-- AVOID generic tags alone (button, input, div) - use find_selectors to get specific selector
-- GOOD: button#submit, .btn-primary, input[type="text"], div.container > p:first-child
-- BAD: button:contains('text'), input, div:has(span), :visible
+✓ MUST be valid CSS selectors (NOT jQuery pseudo-selectors!)
+✓ DO use: #id, .class, [attribute="value"], :first-child, :nth-child(2), element.class
+✗ DON'T use: :contains(), :has(), :visible, :hidden, :eq(), :first, :last, :even, :odd
 
-**Note**: Use "click_selector" not "click", and "fill_selector" not "fill"!""",
+**Good Selectors:**
+✓ button#submit (ID selector)
+✓ .btn-primary (class selector)
+✓ input[type="text"] (attribute selector)
+✓ div.container > p:first-child (child selector)
+✓ button.start-btn (element + class)
+
+**Bad Selectors (will FAIL):**
+✗ button:contains('text') (jQuery, not CSS!)
+✗ input (too generic, use find_selectors first)
+✗ div:has(span) (jQuery, not CSS!)
+✗ :visible (jQuery, not CSS!)
+✗ button:eq(0) (jQuery, not CSS!)
+
+**Common Mistakes:**
+❌ action_type="click" (should be "click_selector")
+❌ action_type="fill" (should be "fill_selector")
+❌ Missing required parameters (selector for click/fill, search_text for find)
+❌ Using generic selectors like "button" alone (use find_selectors first!)
+✓ action_type="click_selector" with selector="button#start"
+✓ Using recommended_selector from find_selectors results
+
+**When to Use:**
+✓ When you need to interact with elements by CSS selector (faster than coordinates)
+✓ When find_selectors found a good selector for you
+✗ Don't use if you don't have a valid CSS selector - use coordinates instead""",
     "input_schema": {
         "type": "object",
         "properties": {
             "action_type": {
                 "type": "string",
                 "enum": ["find_selectors", "click_selector", "fill_selector", "get_info", "evaluate_js"],
-                "description": "Type of DOM action to perform"
+                "description": "REQUIRED: Type of DOM action. Must be EXACTLY: 'find_selectors', 'click_selector', 'fill_selector', 'get_info', or 'evaluate_js'"
             },
             "selector": {
                 "type": "string",
-                "description": "CSS selector (required for click_selector, fill_selector, get_info)"
+                "description": "REQUIRED for click_selector, fill_selector, get_info: Valid CSS selector (e.g., 'button#start', '.btn-primary', 'input[type=\"text\"]'). Use recommended_selector from find_selectors results."
             },
             "text": {
                 "type": "string",
-                "description": "Text to fill (required for fill_selector)"
+                "description": "REQUIRED for fill_selector: Text to type into input field (e.g., 'ABC123', 'john@example.com')."
             },
             "search_text": {
                 "type": "string",
-                "description": "Text to search for (required for find_selectors)"
+                "description": "REQUIRED for find_selectors: Text to search for on page (e.g., 'START', 'Submit', 'Enter code'). Returns CSS selectors containing this text."
             },
             "script": {
                 "type": "string",
-                "description": "JavaScript to execute (required for evaluate_js)"
+                "description": "REQUIRED for evaluate_js: JavaScript code to execute. Use sparingly - prefer other action types."
             },
             "limit": {
                 "type": "integer",
-                "description": "Maximum results for find_selectors (default: 10)",
+                "description": "OPTIONAL for find_selectors: Maximum number of results to return (default: 10, range: 1-50).",
                 "default": 10
             }
         },

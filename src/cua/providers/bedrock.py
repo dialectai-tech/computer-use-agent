@@ -462,18 +462,55 @@ class BedrockProvider(ComputerUseProvider):
         if use_search_tool:
             tools_config.append({
                 "name": "search_page_content",
-                "description": "Search page text and accessibility tree for content. ALWAYS use this BEFORE taking any computer actions. This tool has access to ALL page content including text that may not be visible in screenshots.",
+                "description": """Search page text and accessibility tree for content. ALWAYS use this FIRST before taking any computer actions!
+
+**What this tool does:**
+- Searches ALL page content including text not visible in screenshots
+- Returns line numbers and exact text matches
+- Searches both visible text and accessibility tree structure
+- Helps you find buttons, links, inputs, codes, and any text on the page
+
+**REQUIRED Parameters:**
+- query: (string, REQUIRED) What to search for - can be text, button name, code, etc.
+- search_type: (string, optional) Where to search - "text", "tree", or "both" (default: "both")
+
+**Example Usage:**
+
+1. Find a button by text:
+   search_page_content(query="START", search_type="both")
+
+2. Find code or specific text:
+   search_page_content(query="CODE123", search_type="text")
+
+3. Find input fields:
+   search_page_content(query="Enter code", search_type="both")
+
+**Returns:**
+✓ Found matches: "📄 Found 3 text match(es) at line(s): 10, 25, 37"
+✗ No matches: "❌ No matches found for 'your query'"
+
+**Best Practices:**
+- Use SHORT, SPECIFIC queries (avoid long phrases)
+- Try multiple variations if first search fails (e.g., "Submit", "submit", "SUBMIT")
+- Search first to find location, then use browser_find or coordinates to interact
+- Don't search for common words like "the", "and" - be specific!
+
+**Common Mistakes:**
+❌ Don't pass empty query: query=""
+❌ Don't search without quotes: query=button text (should be "button text")
+✓ Do use specific text: query="Reveal Code"
+✓ Do search before clicking""",
                 "input_schema": {
                     "type": "object",
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "What to search for (text, code, button name, etc.). Supports regex patterns."
+                            "description": "REQUIRED: Text to search for (e.g., 'START', 'Submit', 'Enter code'). Be specific and concise."
                         },
                         "search_type": {
                             "type": "string",
                             "enum": ["text", "tree", "both"],
-                            "description": "Where to search: 'text' (page text), 'tree' (accessibility tree), or 'both'. Default: 'both'"
+                            "description": "OPTIONAL: Where to search. Options: 'text' (page text only), 'tree' (accessibility tree only), 'both' (searches everywhere, DEFAULT)"
                         }
                     },
                     "required": ["query"]
@@ -484,17 +521,71 @@ class BedrockProvider(ComputerUseProvider):
         if use_find_tool:
             tools_config.append({
                 "name": "browser_find",
-                "description": "Use browser's native find (Ctrl+F) to instantly navigate to and highlight content. MUCH faster than scrolling! Use after search_page_content finds content. Browser will auto-scroll to first match and highlight all matches.",
+                "description": """Use browser's native find (Ctrl+F) to instantly navigate to text. MUCH faster than scrolling!
+
+**What this tool does:**
+- Opens browser's native find dialog (Ctrl+F)
+- Automatically scrolls to first match
+- Highlights all matching text on the page
+- Brings the text into view so you can click near it
+
+**REQUIRED Parameters:**
+- search_term: (string, REQUIRED) Exact text to find on the page
+
+**OPTIONAL Parameters:**
+- close_after: (boolean, optional) Close find dialog after finding (default: true)
+
+**Example Usage:**
+
+1. Navigate to button text:
+   browser_find(search_term="START")
+   → Scrolls to "START" button and highlights it
+
+2. Navigate to specific code:
+   browser_find(search_term="CODE123")
+   → Scrolls to "CODE123" text and highlights it
+
+3. Navigate and keep dialog open:
+   browser_find(search_term="Enter code", close_after=false)
+   → Scrolls to text but leaves find dialog open
+
+**Workflow:**
+1. Use search_page_content FIRST to find what text exists
+2. Use browser_find to navigate to that text
+3. Use computer tool to click coordinates near the highlighted text
+
+**Returns:**
+- Message: "Browser find completed"
+- Screenshot showing the page scrolled to the matched text (highlighted)
+
+**Best Practices:**
+- Use EXACT text from search_page_content results
+- Use unique text that appears only once (e.g., "Reveal Code" not just "Code")
+- Short text is better (3-10 words max)
+- Case-sensitive: "START" ≠ "start"
+
+**Common Mistakes:**
+❌ Don't pass empty string: search_term=""
+❌ Don't use partial words: search_term="ST" (use "START")
+❌ Don't search for text that doesn't exist
+✓ Do use exact text: search_term="Click here to reveal"
+✓ Do use unique text: search_term="Step 2 of 30"
+
+**When to Use:**
+✓ After search_page_content finds text location
+✓ When you need to scroll to specific content
+✓ When content is below the fold (not visible in current screenshot)
+✗ Don't use if you already see the element in screenshot - just click it!""",
                 "input_schema": {
                     "type": "object",
                     "properties": {
                         "search_term": {
                             "type": "string",
-                            "description": "Exact text to find on page. Use unique text from search_page_content results to avoid ambiguity."
+                            "description": "REQUIRED: Exact text to find (e.g., 'START', 'Reveal Code', 'Step 2 of 30'). Must be exact match, case-sensitive."
                         },
                         "close_after": {
                             "type": "boolean",
-                            "description": "Whether to close find dialog after finding (default: true)"
+                            "description": "OPTIONAL: Close find dialog after finding. Default: true. Set to false to keep dialog open."
                         }
                     },
                     "required": ["search_term"]
@@ -729,18 +820,28 @@ class BedrockProvider(ComputerUseProvider):
         if use_search_tool:
             tools_config.append({
                 "name": "search_page_content",
-                "description": "Search page text and accessibility tree for content. ALWAYS use this BEFORE taking any computer actions.",
+                "description": """Search page text and accessibility tree for content. ALWAYS use this FIRST before taking any computer actions!
+
+**REQUIRED Parameters:**
+- query: (string, REQUIRED) What to search for - can be text, button name, code, etc.
+- search_type: (string, optional) Where to search - "text", "tree", or "both" (default: "both")
+
+**Example:** search_page_content(query="START", search_type="both")
+
+**Returns:** Line numbers and matches, e.g., "📄 Found 3 text match(es) at line(s): 10, 25, 37"
+
+**Best Practices:** Use short, specific queries. Search first, then use browser_find or click coordinates.""",
                 "input_schema": {
                     "type": "object",
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "What to search for"
+                            "description": "REQUIRED: Text to search for (e.g., 'START', 'Submit'). Be specific."
                         },
                         "search_type": {
                             "type": "string",
                             "enum": ["text", "tree", "both"],
-                            "description": "Where to search"
+                            "description": "OPTIONAL: Where to search. 'both' is default."
                         }
                     },
                     "required": ["query"]
@@ -751,17 +852,28 @@ class BedrockProvider(ComputerUseProvider):
         if use_find_tool:
             tools_config.append({
                 "name": "browser_find",
-                "description": "Use browser find (Ctrl+F) to instantly navigate to content. Use after search_page_content.",
+                "description": """Use browser find (Ctrl+F) to instantly navigate to text. MUCH faster than scrolling!
+
+**REQUIRED Parameters:**
+- search_term: (string, REQUIRED) Exact text to find on the page
+
+**Example:** browser_find(search_term="Reveal Code")
+
+**Returns:** Screenshot with page scrolled to matched text (highlighted)
+
+**Workflow:** 1) search_page_content to find text, 2) browser_find to navigate to it, 3) click coordinates
+
+**Best Practices:** Use exact text from search results. Case-sensitive. Short unique text works best.""",
                 "input_schema": {
                     "type": "object",
                     "properties": {
                         "search_term": {
                             "type": "string",
-                            "description": "Exact text to find"
+                            "description": "REQUIRED: Exact text to find (case-sensitive). Use unique text."
                         },
                         "close_after": {
                             "type": "boolean",
-                            "description": "Whether to close find dialog after finding"
+                            "description": "OPTIONAL: Close dialog after finding. Default: true."
                         }
                     },
                     "required": ["search_term"]
