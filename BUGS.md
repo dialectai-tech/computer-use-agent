@@ -231,7 +231,7 @@ Use `--max-message-turns 3` (default) for normal operations.
 
 ## Summary
 
-**Fixed**: 2 (BUG-001 ✅, BUG-007 ✅)
+**Fixed**: 3 (BUG-001 ✅, BUG-007 ✅, BUG-008 ✅)
 **Critical Issues**: 1 (BUG-002)
 **High Priority**: 1 (BUG-005)
 **Medium Priority**: 1 (BUG-003)
@@ -245,3 +245,32 @@ Use `--max-message-turns 3` (default) for normal operations.
 4. 🟡 Fix BUG-003: Improve DOM Find to return specific selectors
 5. 🟢 Fix BUG-004: Update display text to be less confusing
 6. 🧪 Test complete solution with final command
+
+---
+
+### ✅ BUG-008: Empty continuation after auto-reset  
+**Status**: ✅ Fixed (commit 14c31b0)  
+**Priority**: Critical  
+**Found in**: After fixing BUG-007
+
+**Description**:
+Even with BUG-007 fixed, empty message error still occurred immediately after auto-reset triggered.
+
+**Root Cause**:
+After context reset:
+1. `last_tool_uses` is cleared in reset_context()
+2. Next iteration calls `create_continuation_request`
+3. Builds `tool_result_content` by iterating empty `last_tool_uses` list
+4. Appends user message with empty content array
+5. AWS Bedrock rejects empty content arrays
+
+**Solution**: ✅ FIXED
+1. Added `just_reset` flag to track when reset just happened
+2. After reset, start fresh iteration (take screenshot, continue normally)
+3. Safety check in `create_continuation_request`: if `tool_result_content` empty, add placeholder text
+
+**Verification**: ✅ Tested at 2026-02-08 12:32
+- Auto-reset triggered at iteration 6 (20,454 tokens)
+- Printed "Starting fresh iteration after context reset..."
+- No empty message errors
+- Continued normally for 4 more iterations
