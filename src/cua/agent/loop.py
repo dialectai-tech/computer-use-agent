@@ -161,11 +161,14 @@ class ComputerUseAgent:
             breakdown.system_prompt_tokens = 0  # Cached by API, not re-sent
 
         # Screenshot tokens
+        # NOTE: With screenshot stripping optimization, only the most recent screenshot
+        # is sent to the API (old screenshots are stripped during message pruning).
+        # So we only count 1 screenshot, not (context_size + 1).
         if screenshot:
             breakdown.screenshots_tokens = estimate_image_tokens(
                 self.display_width,
                 self.display_height
-            ) * (context_size + 1)  # Current + previous screenshots
+            )  # Only current screenshot (old ones stripped)
 
         # Page text tokens
         if page_text:

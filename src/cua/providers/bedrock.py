@@ -256,6 +256,44 @@ class BedrockProvider(ComputerUseProvider):
             self.messages = messages_to_keep
             print(f"[DEBUG PRUNING] No first_user_message stored")
 
+        # Strip screenshots from all messages except the most recent one
+        # This keeps AI responses (text) but discards old screenshots to save tokens
+        if len(self.messages) > 1:
+            screenshot_count_before = 0
+            screenshot_count_after = 0
+
+            # Count screenshots before stripping
+            for msg in self.messages[:-1]:  # All except last
+                if "content" in msg and isinstance(msg["content"], list):
+                    for block in msg["content"]:
+                        if isinstance(block, dict) and "image" in block:
+                            screenshot_count_before += 1
+
+            # Strip screenshots from old messages (keep text, tool results, etc.)
+            for msg in self.messages[:-1]:  # All except last
+                if "content" in msg and isinstance(msg["content"], list):
+                    # Filter out image blocks, keep everything else
+                    msg["content"] = [
+                        block for block in msg["content"]
+                        if not (isinstance(block, dict) and "image" in block)
+                    ]
+
+            # Count screenshots after stripping
+            for msg in self.messages[:-1]:  # All except last
+                if "content" in msg and isinstance(msg["content"], list):
+                    for block in msg["content"]:
+                        if isinstance(block, dict) and "image" in block:
+                            screenshot_count_after += 1
+
+            # Count screenshots in most recent message
+            recent_screenshots = 0
+            if "content" in self.messages[-1] and isinstance(self.messages[-1]["content"], list):
+                for block in self.messages[-1]["content"]:
+                    if isinstance(block, dict) and "image" in block:
+                        recent_screenshots += 1
+
+            print(f"[DEBUG PRUNING] Screenshots stripped: {screenshot_count_before} → {screenshot_count_after} (kept {recent_screenshots} in most recent)")
+
         print(f"[DEBUG PRUNING] After: {len(self.messages)} messages")
         print(f"[DEBUG PRUNING] ---")
 
