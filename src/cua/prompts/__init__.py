@@ -4,16 +4,10 @@
 SYSTEM_PROMPT = """You are an autonomous computer use agent controlling a browser through tools.
 
 **Core Workflow:**
-1. Search first: Use search_page_content to find elements (NEVER scroll blindly)
-2. Act efficiently: Use dom_manipulation for direct actions (10-100x faster than coordinates)
-3. Observe results: Take screenshots only when needed
-4. Reset context: After completing milestones to save tokens if the previous conversation is no longer relevant
-
-**Tool Priority:**
-1. dom_manipulation - Find and click via selectors (no coordinates needed!)
-2. search_page_content - Find elements by text
-3. browser_find - Navigate to text instantly (Ctrl+F)
-4. screenshot + click - Last resort if DOM fails
+1. Search for elements before acting (avoid blind scrolling)
+2. Act efficiently using available tools
+3. Observe results and verify actions worked
+4. Reset context after completing milestones to save tokens
 
 **CRITICAL Rules:**
 - Mark codes/credentials with [remember]...[/remember] to preserve them
@@ -23,9 +17,8 @@ SYSTEM_PROMPT = """You are an autonomous computer use agent controlling a browse
 
 **When Stuck:**
 - Don't repeat failed actions - try a different approach
-- If DOM fails → use coordinates
-- If search fails → use browser_find
-- After a large number of iterations → use reset_context tool if appropriate."""
+- Try alternative methods if one approach fails
+- After many iterations, consider using reset_context tool if appropriate"""
 
 # Concise autonomous mode instruction - OPTIMIZED
 AUTONOMOUS_MODE = """Act autonomously. Observe results and continue until complete."""
@@ -65,13 +58,8 @@ reset_context(
 
 ❌ Don't use: in middle of forms, while debugging, or before iteration 15."""
 
-# Tool usage essentials - OPTIMIZED
-TOOL_USAGE_ESSENTIALS = """**Priority**: search → DOM → coordinates (if DOM fails).
-**Shortcuts**: Home/End (jump to top/bottom), Ctrl+Home/End (absolute)."""
-
-# Tool usage essentials WITHOUT search (when search tool unavailable)
-TOOL_USAGE_ESSENTIALS_NO_SEARCH = """**Priority**: DOM → coordinates (if DOM fails) → screenshot for visual state.
-**Shortcuts**: Home/End (jump to top/bottom), Ctrl+Home/End (absolute)."""
+# Shortcuts always available
+SHORTCUTS = """**Shortcuts**: Home/End (jump to top/bottom), Ctrl+Home/End (absolute)."""
 
 # Two-phase workflow prompt
 TWO_PHASE_PROMPT_P1 = """**PHASE 1: SEARCH ONLY (REQUIRED)**
@@ -101,32 +89,38 @@ def build_initial_prompt(
     user_prompt: str,
     has_search_tool: bool = True,
     has_page_text: bool = True,
-    two_phase: bool = False
+    two_phase: bool = False,
+    use_dom_manipulation: bool = True,
+    use_find_tool: bool = True
 ) -> str:
     """Build concise initial prompt with atomic flag-to-prompt relationships.
 
     Args:
         user_prompt: User's task description
-        has_search_tool: Whether search tool has data to search (page_text OR accessibility_tree)
+        has_search_tool: Whether search tool is enabled
         has_page_text: Whether page text is available
         two_phase: Whether using two-phase workflow
+        use_dom_manipulation: Whether DOM manipulation tool is enabled
+        use_find_tool: Whether browser find tool is enabled
 
     Returns:
         Complete prompt string
     """
     parts = [user_prompt, AUTONOMOUS_MODE]
 
-    # ATOMIC RULE: Only include guides for tools that will actually work
+    # ATOMIC RULE: Only include guides for tools that are actually enabled
 
-    # SEARCH_TOOL_GUIDE: Only if search tool has data to search
+    # SEARCH_TOOL_GUIDE: Only if search tool is enabled
     if has_search_tool:
         parts.append(SEARCH_TOOL_GUIDE)
 
-    # BROWSER_FIND_GUIDE: Always available (uses browser's native find)
-    parts.append(BROWSER_FIND_GUIDE)
+    # BROWSER_FIND_GUIDE: Only if find tool is enabled
+    if use_find_tool:
+        parts.append(BROWSER_FIND_GUIDE)
 
-    # DOM_TOOL_GUIDE: Always available (CRITICAL: Contains action_type examples)
-    parts.append(DOM_TOOL_GUIDE)
+    # DOM_TOOL_GUIDE: Only if DOM manipulation is enabled
+    if use_dom_manipulation:
+        parts.append(DOM_TOOL_GUIDE)
 
     # CONTEXT_RESET_GUIDE: Always available
     parts.append(CONTEXT_RESET_GUIDE)
@@ -134,11 +128,19 @@ def build_initial_prompt(
     if two_phase:
         parts.append(TWO_PHASE_PROMPT_P1)
     else:
-        # Use appropriate essentials based on search tool availability
+        # Build tool priority dynamically based on enabled tools
+        priority_steps = []
         if has_search_tool:
-            parts.append(TOOL_USAGE_ESSENTIALS)
-        else:
-            parts.append(TOOL_USAGE_ESSENTIALS_NO_SEARCH)
+            priority_steps.append("search")
+        if use_dom_manipulation:
+            priority_steps.append("DOM")
+        priority_steps.append("coordinates")
+
+        if len(priority_steps) > 1:
+            priority_text = f"**Priority**: {' → '.join(priority_steps)}."
+            parts.append(priority_text)
+
+        parts.append(SHORTCUTS)
 
     return "\n\n".join(parts)
 

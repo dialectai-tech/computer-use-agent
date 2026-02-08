@@ -116,6 +116,16 @@ console = Console()
     help="Enable DOM manipulation tool for CSS selector-based actions (default: enabled)"
 )
 @click.option(
+    "--use-search-tool/--no-use-search-tool",
+    default=True,
+    help="Enable search_page_content tool for searching page text/tree (default: enabled)"
+)
+@click.option(
+    "--use-find-tool/--no-use-find-tool",
+    default=True,
+    help="Enable browser_find tool for Ctrl+F navigation (default: enabled)"
+)
+@click.option(
     "--two-phase-workflow/--no-two-phase-workflow",
     default=False,
     help="Enable two-phase workflow: search first (no screenshot), then action with screenshot (default: disabled)"
@@ -156,6 +166,8 @@ def cli(
     use_accessibility_tree: bool,
     use_page_text: bool,
     use_dom_manipulation: bool,
+    use_search_tool: bool,
+    use_find_tool: bool,
     two_phase_workflow: bool,
     max_message_turns: int,
     auto_context_reset: bool,
@@ -269,6 +281,8 @@ def cli(
         use_accessibility_tree=use_accessibility_tree,
         use_page_text=use_page_text,
         use_dom_manipulation=use_dom_manipulation,
+        use_search_tool=use_search_tool,
+        use_find_tool=use_find_tool,
         two_phase_workflow=two_phase_workflow,
         max_message_turns=max_message_turns,
         auto_context_reset=auto_context_reset,

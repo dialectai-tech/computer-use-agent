@@ -8,7 +8,7 @@ import boto3
 import re
 
 from cua.providers.base import ComputerUseProvider, Action, ActionType
-from cua.prompts import build_initial_prompt, get_system_prompt, TOOL_USAGE_ESSENTIALS, TWO_PHASE_PROMPT_P2
+from cua.prompts import build_initial_prompt, get_system_prompt, TWO_PHASE_PROMPT_P2
 from cua.tools.dom_tool import DOM_TOOL_DEFINITION
 from cua.tools.context_reset_tool import CONTEXT_RESET_TOOL_DEFINITION
 
@@ -387,7 +387,9 @@ class BedrockProvider(ComputerUseProvider):
         page_text: Optional[str] = None,
         display_width: int = 1024,
         display_height: int = 768,
-        use_dom_manipulation: bool = True
+        use_dom_manipulation: bool = True,
+        use_search_tool: bool = True,
+        use_find_tool: bool = True
     ) -> Any:
         """Create initial API request using Bedrock Converse API.
 
@@ -407,9 +409,11 @@ class BedrockProvider(ComputerUseProvider):
         has_search_tool = page_text is not None or (accessibility_tree and not accessibility_tree.get("error"))
         full_prompt = build_initial_prompt(
             user_prompt=prompt,
-            has_search_tool=has_search_tool,
+            has_search_tool=use_search_tool,
             has_page_text=bool(page_text),
-            two_phase=False
+            two_phase=False,
+            use_dom_manipulation=use_dom_manipulation,
+            use_find_tool=use_find_tool
         )
 
         # Build message content for Converse API format
@@ -452,9 +456,11 @@ class BedrockProvider(ComputerUseProvider):
             self.first_user_message = copy.deepcopy(self.messages[0])
 
         # Tools configuration - use model-specific tool version
-        tools_config = [
-            # Custom search tool - MUST be used before computer tool
-            {
+        tools_config = []
+
+        # Add search tool if enabled
+        if use_search_tool:
+            tools_config.append({
                 "name": "search_page_content",
                 "description": "Search page text and accessibility tree for content. ALWAYS use this BEFORE taking any computer actions. This tool has access to ALL page content including text that may not be visible in screenshots.",
                 "input_schema": {
@@ -472,9 +478,11 @@ class BedrockProvider(ComputerUseProvider):
                     },
                     "required": ["query"]
                 }
-            },
-            # Browser find tool - use after search to navigate instantly
-            {
+            })
+
+        # Add browser find tool if enabled
+        if use_find_tool:
+            tools_config.append({
                 "name": "browser_find",
                 "description": "Use browser's native find (Ctrl+F) to instantly navigate to and highlight content. MUCH faster than scrolling! Use after search_page_content finds content. Browser will auto-scroll to first match and highlight all matches.",
                 "input_schema": {
@@ -491,8 +499,7 @@ class BedrockProvider(ComputerUseProvider):
                     },
                     "required": ["search_term"]
                 }
-            },
-        ]
+            })
 
         # Add DOM manipulation tool if enabled
         if use_dom_manipulation:
@@ -583,7 +590,9 @@ class BedrockProvider(ComputerUseProvider):
         display_width: int = 1024,
         display_height: int = 768,
         additional_instruction: Optional[str] = None,
-        use_dom_manipulation: bool = True
+        use_dom_manipulation: bool = True,
+        use_search_tool: bool = True,
+        use_find_tool: bool = True
     ) -> Any:
         """Create continuation request with tool results.
 
@@ -719,9 +728,11 @@ class BedrockProvider(ComputerUseProvider):
         })
 
         # Tools configuration - use model-specific tool version
-        tools_config = [
-            # Custom search tool - MUST be used before computer tool
-            {
+        tools_config = []
+
+        # Add search tool if enabled
+        if use_search_tool:
+            tools_config.append({
                 "name": "search_page_content",
                 "description": "Search page text and accessibility tree for content. ALWAYS use this BEFORE taking any computer actions.",
                 "input_schema": {
@@ -739,9 +750,11 @@ class BedrockProvider(ComputerUseProvider):
                     },
                     "required": ["query"]
                 }
-            },
-            # Browser find tool - use after search to navigate instantly
-            {
+            })
+
+        # Add browser find tool if enabled
+        if use_find_tool:
+            tools_config.append({
                 "name": "browser_find",
                 "description": "Use browser find (Ctrl+F) to instantly navigate to content. Use after search_page_content.",
                 "input_schema": {
@@ -758,8 +771,7 @@ class BedrockProvider(ComputerUseProvider):
                     },
                     "required": ["search_term"]
                 }
-            },
-        ]
+            })
 
         # Add DOM manipulation tool if enabled
         if use_dom_manipulation:

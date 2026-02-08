@@ -5,7 +5,7 @@ import re
 from openai import OpenAI
 
 from cua.providers.base import ComputerUseProvider, Action, ActionType
-from cua.prompts import build_initial_prompt, get_system_prompt, TOOL_USAGE_ESSENTIALS, TWO_PHASE_PROMPT_P2
+from cua.prompts import build_initial_prompt, get_system_prompt, TWO_PHASE_PROMPT_P2
 
 
 class OpenAIProvider(ComputerUseProvider):
@@ -46,7 +46,10 @@ class OpenAIProvider(ComputerUseProvider):
         accessibility_tree: Optional[dict] = None,
         page_text: Optional[str] = None,
         display_width: int = 1024,
-        display_height: int = 768
+        display_height: int = 768,
+        use_dom_manipulation: bool = True,
+        use_search_tool: bool = True,
+        use_find_tool: bool = True
     ) -> Any:
         """Create initial API request to OpenAI.
 
@@ -65,9 +68,11 @@ class OpenAIProvider(ComputerUseProvider):
         has_search_tool = page_text is not None or (accessibility_tree and not accessibility_tree.get("error"))
         full_prompt = build_initial_prompt(
             user_prompt=prompt,
-            has_search_tool=has_search_tool,
+            has_search_tool=use_search_tool,
             has_page_text=bool(page_text),
-            two_phase=False
+            two_phase=False,
+            use_dom_manipulation=use_dom_manipulation,
+            use_find_tool=use_find_tool
         )
 
         # Build initial input content with system prompt + user prompt

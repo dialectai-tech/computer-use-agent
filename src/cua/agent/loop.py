@@ -53,6 +53,8 @@ class ComputerUseAgent:
         use_accessibility_tree: bool = True,
         use_page_text: bool = True,
         use_dom_manipulation: bool = True,
+        use_search_tool: bool = True,
+        use_find_tool: bool = True,
         two_phase_workflow: bool = False,
         max_message_turns: int = 10,
         auto_context_reset: bool = True,
@@ -101,6 +103,8 @@ class ComputerUseAgent:
         self.use_accessibility_tree = use_accessibility_tree
         self.use_page_text = use_page_text
         self.use_dom_manipulation = use_dom_manipulation
+        self.use_search_tool = use_search_tool
+        self.use_find_tool = use_find_tool
         self.two_phase_workflow = two_phase_workflow
         self.console = Console()
         self.browser: Optional[PlaywrightController] = None
@@ -379,7 +383,9 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                     page_text=page_text if self.use_page_text else None,
                     display_width=self.display_width,
                     display_height=self.display_height,
-                    use_dom_manipulation=self.use_dom_manipulation
+                    use_dom_manipulation=self.use_dom_manipulation,
+                    use_search_tool=self.use_search_tool,
+                    use_find_tool=self.use_find_tool
                 )
             else:
                 # Normal workflow: send everything including screenshot
@@ -390,7 +396,9 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                     page_text=page_text if self.use_page_text else None,
                     display_width=self.display_width,
                     display_height=self.display_height,
-                    use_dom_manipulation=self.use_dom_manipulation
+                    use_dom_manipulation=self.use_dom_manipulation,
+                    use_search_tool=self.use_search_tool,
+                    use_find_tool=self.use_find_tool
                 )
 
             # Track initial request tokens
@@ -439,7 +447,9 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                         display_width=self.display_width,
                         display_height=self.display_height,
                         additional_instruction=None,
-                        use_dom_manipulation=self.use_dom_manipulation
+                        use_dom_manipulation=self.use_dom_manipulation,
+                        use_search_tool=self.use_search_tool,
+                        use_find_tool=self.use_find_tool
                     )
                     # Continue to next iteration to process this response normally
                     continue
@@ -541,7 +551,9 @@ Take a screenshot, analyze the current state, and proceed with the next step of 
                             display_width=self.display_width,
                             display_height=self.display_height,
                             additional_instruction=progress_reminder,
-                            use_dom_manipulation=self.use_dom_manipulation
+                            use_dom_manipulation=self.use_dom_manipulation,
+                            use_search_tool=self.use_search_tool,
+                            use_find_tool=self.use_find_tool
                         )
                         continue
 
@@ -610,7 +622,9 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                         display_width=self.display_width,
                         display_height=self.display_height,
                         additional_instruction=retry_instruction,
-                        use_dom_manipulation=self.use_dom_manipulation
+                        use_dom_manipulation=self.use_dom_manipulation,
+                        use_search_tool=self.use_search_tool,
+                        use_find_tool=self.use_find_tool
                     )
                     continue
                 else:
@@ -830,7 +844,9 @@ WRONG: Calling browser_find without search_term parameter
                         display_width=self.display_width,
                         display_height=self.display_height,
                         additional_instruction=phase2_prompt,  # Send Phase 2 instructions to AI
-                        use_dom_manipulation=self.use_dom_manipulation
+                        use_dom_manipulation=self.use_dom_manipulation,
+                        use_search_tool=self.use_search_tool,
+                        use_find_tool=self.use_find_tool
                     )
 
                     # Show phase 2 prompt in console for user visibility
@@ -993,7 +1009,9 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
                     display_width=self.display_width,
                     display_height=self.display_height,
                     additional_instruction=combined_message,  # Inject stuck/progress messages
-                    use_dom_manipulation=self.use_dom_manipulation
+                    use_dom_manipulation=self.use_dom_manipulation,
+                    use_search_tool=self.use_search_tool,
+                    use_find_tool=self.use_find_tool
                 )
 
                 # Calculate and display token stats
