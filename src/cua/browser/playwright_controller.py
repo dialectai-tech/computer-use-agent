@@ -293,7 +293,7 @@ class PlaywrightController:
                     key_text = action.params["text"]
 
                     # Handle keyboard shortcuts (Ctrl+Home, Ctrl+End, etc.)
-                    if "+" in key_text:
+                    if "+" in key_text and " " not in key_text:
                         # Parse key combination (e.g., "Control+Home", "ctrl+a")
                         parts = [p.strip().lower() for p in key_text.split("+")]
                         modifiers = []
@@ -322,6 +322,13 @@ class PlaywrightController:
                         # Release modifiers
                         for mod in reversed(modifiers):
                             self.page.keyboard.up(mod)
+                    elif " " in key_text:
+                        # Multiple space-separated keys (e.g., "down down down" or "Tab Return")
+                        # Split and press each key sequentially
+                        keys = key_text.split()
+                        for key in keys:
+                            self.page.keyboard.press(self._map_key(key.strip()))
+                            time.sleep(0.1)  # Small delay between key presses
                     else:
                         # Single key press
                         self.page.keyboard.press(self._map_key(key_text))

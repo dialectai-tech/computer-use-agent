@@ -953,13 +953,32 @@ WRONG: Calling browser_find without search_term parameter
                         # If one action type appears 3+ times in last 3 iterations
                         if most_common[1] >= 3:
                             stuck_action = most_common[0]
-                            stuck_message = f"""⚠️ STUCK DETECTED: You've used '{stuck_action}' {most_common[1]} times recently without making progress.
 
-Try a DIFFERENT approach:
-- If searching fails → Use browser_find or scroll instead
-- If browser_find fails → Use Ctrl+Home/End to reposition, then try screenshot
-- If clicking fails → Verify element is visible in screenshot first
-- Consider calling MULTIPLE actions in one response (click → type → submit)"""
+                            # Build suggestions based on enabled tools and stuck action
+                            suggestions = []
+
+                            if stuck_action == 'search' and self.use_find_tool:
+                                suggestions.append("If searching fails → Use browser_find to navigate instantly")
+
+                            if stuck_action == 'find' and self.use_search_tool:
+                                suggestions.append("If browser_find fails → Use search_page_content for detailed results")
+
+                            if stuck_action == 'click':
+                                suggestions.append("If clicking fails → Verify element is visible in screenshot first")
+                                if self.use_dom_manipulation:
+                                    suggestions.append("If coordinates fail → Try DOM manipulation with CSS selectors")
+
+                            if stuck_action in ['search', 'find', 'scroll']:
+                                suggestions.append("Try using keyboard shortcuts: Home/End (jump to top/bottom)")
+
+                            # Always suggest multi-action responses
+                            suggestions.append("Consider calling MULTIPLE actions in one response (click → type → submit)")
+
+                            # Build the message
+                            stuck_message = f"⚠️ STUCK DETECTED: You've used '{stuck_action}' {most_common[1]} times recently without making progress.\n\nTry a DIFFERENT approach:"
+                            if suggestions:
+                                stuck_message += "\n" + "\n".join(f"- {s}" for s in suggestions)
+
                             self.console.print(f"[yellow]{stuck_message}[/yellow]")
 
                 # Add progress reminder every 5 iterations
