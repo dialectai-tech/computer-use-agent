@@ -256,8 +256,9 @@ Use `--max-message-turns 3` (default) for normal operations.
 7. ✅ BUG-009: Token counting uses per-call stats (dict response check)
 
 **Next Actions**:
-1. 🧪 Test BUG-009 fix with haiku + 10 iterations
+1. ✅ Test BUG-009 fix with haiku + 10 iterations - PASSED
 2. 🔍 Investigate BUG-005: Why AI response tokens grow so much
+3. 🔍 AI behavior issue: Model keeps retrying invalid selectors instead of using find_selectors workflow (training/prompt issue, not a bug)
 
 ---
 
@@ -357,13 +358,16 @@ elif hasattr(self.provider, 'stats') and self.provider.stats:
     breakdown.total_output_tokens = self.provider.stats.output_tokens
 ```
 
-**Verification**: ✅ TESTED (2026-02-08 13:02)
-Test run with haiku, 10 iterations, auto-reset threshold 20K:
-- Iteration 1: 5,566 tokens (correct initial)
-- Iteration 2: 2,737 tokens (reduced correctly)
+**Verification**: ✅ TESTED (2026-02-08 13:02 and 14:05)
+Test run with haiku, 10-15 iterations, validation fixes:
+- Iteration 1: 5,566 tokens (System prompt: 500)
+- Iteration 2: 2,737 tokens (System prompt: 0 - cached ✓)
 - Iteration 5: 1,843 tokens (after pruning)
 - Iteration 8: 4,398 tokens (after page navigation with page_text)
 - Iteration 11: 5,722 tokens (reasonable growth)
 - Total: 43,843 input tokens across 11 calls (~3,986 avg)
-- No more cumulative inflation
-- Auto-reset threshold check using correct per-call tokens
+- ✅ No more cumulative inflation
+- ✅ Auto-reset threshold check using correct per-call tokens
+- ✅ jQuery selector validation working (`:contains()` rejected)
+- ✅ Generic selector validation working (`input`, `button` rejected)
+- ✅ System prompt caching working (0 tokens after iteration 1)
