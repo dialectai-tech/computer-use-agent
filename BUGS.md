@@ -2,8 +2,8 @@
 
 ## Critical Bugs
 
-### 🔴 BUG-001: Automatic context reset not triggering at threshold
-**Status**: 🔴 Open
+### ✅ BUG-001: Automatic context reset not triggering at threshold
+**Status**: ✅ Fixed (commit ac64c77)
 **Priority**: Critical
 **Found in**: Test run 2026-02-08 11:58:46
 
@@ -26,7 +26,33 @@ Actual: No reset triggered
 - Threshold comparison logic may be broken
 - Check happens before pruning but threshold check uses post-pruning stats
 
-**Solution**: TBD
+**Solution**: ✅ FIXED
+- Moved auto-reset check to AFTER breakdown calculation
+- Pass current iteration's input tokens instead of cumulative total
+- Added debug logging to track threshold checks
+
+---
+
+### ✅ BUG-007: Empty messages after context reset
+**Status**: ✅ Fixed (commits 31115d8, fd50030, 5bc50d7, 11ba1e3)
+**Priority**: Critical
+**Found in**: After implementing auto-reset
+
+**Description**:
+After context reset, AWS Bedrock rejected messages with error "messages.2 is empty".
+
+**Root Cause**:
+Multiple issues:
+1. Screenshot stripping created empty content arrays
+2. first_user_message was stored as reference and got mutated during stripping
+3. Reset reused the mutated reference
+
+**Solution**: ✅ FIXED
+- Only strip screenshots from messages with other content
+- Keep screenshots if message would become empty
+- Deep copy first_user_message when storing initially
+- Deep copy again when using in reset
+- Keep last 2 messages intact during stripping
 
 ---
 
@@ -205,15 +231,17 @@ Use `--max-message-turns 3` (default) for normal operations.
 
 ## Summary
 
-**Critical Issues**: 2 (BUG-001, BUG-002)
+**Fixed**: 2 (BUG-001 ✅, BUG-007 ✅)
+**Critical Issues**: 1 (BUG-002)
 **High Priority**: 1 (BUG-005)
 **Medium Priority**: 1 (BUG-003)
 **Low Priority**: 1 (BUG-004)
 **Info**: 1 (BUG-006)
 
 **Next Actions**:
-1. ✅ Commit current state
-2. 🔴 Fix BUG-001: Debug why auto-reset isn't triggering
+1. ✅ Fixed BUG-001: Auto-reset now uses current iteration tokens
+2. ✅ Fixed BUG-007: Deep copy prevents message mutations
 3. 🔴 Fix BUG-002: Add selector validation or better AI guidance
 4. 🟡 Fix BUG-003: Improve DOM Find to return specific selectors
 5. 🟢 Fix BUG-004: Update display text to be less confusing
+6. 🧪 Test complete solution with final command
