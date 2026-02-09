@@ -124,7 +124,7 @@ def estimate_image_tokens(width: int, height: int) -> int:
     return int((width * height) / (1024 * 1024) * 1600)
 
 
-def print_token_stats(iteration: int, breakdown: TokenBreakdown, cumulative: CumulativeTokenStats, console):
+def print_token_stats(iteration: int, breakdown: TokenBreakdown, cumulative: CumulativeTokenStats, console, elapsed_time: float = None, api_time: float = None):
     """Print formatted token statistics to console.
 
     Args:
@@ -132,6 +132,8 @@ def print_token_stats(iteration: int, breakdown: TokenBreakdown, cumulative: Cum
         breakdown: Token breakdown for this iteration
         cumulative: Cumulative stats across all iterations
         console: Rich console object for formatted output
+        elapsed_time: Total elapsed time since start (optional)
+        api_time: Time taken for this API call (optional)
     """
     # Print current iteration stats
     console.print(f"\n[bold cyan]╭─ Token Usage (Iteration {iteration}) ───────────────────────[/bold cyan]")
@@ -148,6 +150,13 @@ def print_token_stats(iteration: int, breakdown: TokenBreakdown, cumulative: Cum
     console.print(f"[cyan]│[/cyan]   [dim]AI Responses:[/dim]    {breakdown.ai_responses_tokens:>10,}")
     console.print(f"[cyan]│[/cyan] [bold]Output Tokens:[/bold]     {breakdown.total_output_tokens:>10,}")
     console.print(f"[cyan]│[/cyan] [bold yellow]Total This Call:[/bold yellow]   {breakdown.total_tokens:>10,}")
+
+    # Add timing information if available
+    if api_time is not None:
+        console.print(f"[cyan]│[/cyan] [dim]API Call Time:[/dim]   {api_time:>13.2f}s")
+    if elapsed_time is not None:
+        console.print(f"[cyan]│[/cyan] [dim]Total Elapsed:[/dim]   {elapsed_time:>13.1f}s")
+
     console.print(f"[cyan]│[/cyan]")
     console.print(f"[cyan]│[/cyan] [bold green]Cumulative Total:[/bold green]  {cumulative.total_tokens:>10,} [dim]({cumulative.total_api_calls} calls)[/dim]")
     console.print(f"[cyan]╰────────────────────────────────────────────────────────[/cyan]\n")

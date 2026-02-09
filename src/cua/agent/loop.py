@@ -432,14 +432,20 @@ Report what you found (codes, buttons, inputs, etc.) with line numbers and locat
                 iteration=1  # First iteration
             )
             self.cumulative_token_stats.add_iteration(initial_breakdown)
-            print_token_stats(1, initial_breakdown, self.cumulative_token_stats, self.console)
+            initial_elapsed = time.time() - start_time
+            # Get last API call time from provider stats
+            initial_api_time = self.provider.stats.api_call_times[-1] if self.provider.stats.api_call_times else None
+            print_token_stats(1, initial_breakdown, self.cumulative_token_stats, self.console, elapsed_time=initial_elapsed, api_time=initial_api_time)
             self._dump_conversation(1)
 
             # Main agent loop
             while iteration < max_iterations:
                 iteration += 1
+                iteration_start_time = time.time()
+                elapsed_time = iteration_start_time - start_time
+                elapsed_str = f"{elapsed_time:.1f}s"
 
-                self.console.print(f"[bold]Iteration {iteration}/{max_iterations}[/bold]")
+                self.console.print(f"[bold]Iteration {iteration}/{max_iterations}[/bold] [dim](elapsed: {elapsed_str})[/dim]")
 
                 # If we just reset context, start fresh instead of continuing from previous state
                 if self.just_reset:
@@ -1197,7 +1203,10 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
                     iteration=iteration + 1  # Pass 1-indexed iteration for display
                 )
                 self.cumulative_token_stats.add_iteration(breakdown)
-                print_token_stats(iteration + 1, breakdown, self.cumulative_token_stats, self.console)
+                current_elapsed = time.time() - start_time
+                # Get last API call time from provider stats
+                api_call_time = self.provider.stats.api_call_times[-1] if self.provider.stats.api_call_times else None
+                print_token_stats(iteration + 1, breakdown, self.cumulative_token_stats, self.console, elapsed_time=current_elapsed, api_time=api_call_time)
 
                 # Check if automatic context reset should be triggered
                 # (Must be after breakdown calculation to use current iteration's token count)
