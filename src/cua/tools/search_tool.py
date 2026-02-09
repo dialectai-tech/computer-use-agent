@@ -19,11 +19,33 @@ class SearchTool:
         self.accessibility_tree = accessibility_tree or {}
         self._lines = page_text.split('\n') if page_text else []
 
+        # Map common semantic queries to ARIA roles
+        self.role_keywords = {
+            "button": "button",
+            "link": "link",
+            "input": "textbox",
+            "textbox": "textbox",
+            "text field": "textbox",
+            "text input": "textbox",
+            "checkbox": "checkbox",
+            "check box": "checkbox",
+            "radio": "radio",
+            "radio button": "radio",
+            "dropdown": "combobox",
+            "select": "combobox",
+            "combobox": "combobox",
+            "heading": "heading",
+            "list": "list",
+            "listitem": "listitem",
+            "image": "img",
+            "img": "img"
+        }
+
     def search(self, query: str, search_type: str = "text", max_results: int = 15) -> Dict[str, Any]:
         """Search for content in page text and/or accessibility tree.
 
         Args:
-            query: What to search for (can be regex pattern)
+            query: What to search for (can be regex pattern or semantic query)
             search_type: Type of search - "text", "tree", or "both"
             max_results: Maximum number of results to return (default: 15)
 
@@ -37,11 +59,16 @@ class SearchTool:
             "tree_matches": [],
             "total_matches": 0,
             "truncated": False,
-            "summary": ""
+            "summary": "",
+            "search_strategy": "text"  # Track what strategy was used
         }
 
-        # Search in page text
-        if search_type in ["text", "both"]:
+        # Detect semantic queries (e.g., "radio button", "checkbox input")
+        # These should search by element role, not literal text
+        detected_role = self._detect_role_query(query)
+
+        # Search in page text (unless it's a pure role query)
+        if search_type in ["text", "both"] and not detected_role:
             text_matches = self._search_text(query, max_results)
             if text_matches:
                 results["found"] = True
@@ -49,11 +76,41 @@ class SearchTool:
                 results["total_matches"] = len(text_matches)
                 if len(text_matches) > max_results:
                     results["truncated"] = True
+                results["search_strategy"] = "text"
 
         # Search in accessibility tree
         if search_type in ["tree", "both"]:
             remaining_limit = max_results - len(results["text_matches"])
-            tree_matches = self._search_tree(query)
+
+            if detected_role:
+                # Semantic query detected - search by role
+                role_matches = self._find_by_role(detected_role)
+
+                # Filter by additional text if query has more than just the role keyword
+                query_lower = query.lower()
+                # Remove all role keywords from query to get the filter text
+                filter_text = query_lower
+                for keyword in self.role_keywords.keys():
+                    filter_text = filter_text.replace(keyword, "")
+                filter_text = filter_text.strip()
+
+                if filter_text:
+                    # Filter matches by the remaining text
+                    tree_matches = []
+                    for match in role_matches:
+                        match_text = f"{match.get('name', '')} {match.get('value', '')}".lower()
+                        if filter_text in match_text:
+                            tree_matches.append(match)
+                else:
+                    # No additional filter text, return all matches for that role
+                    tree_matches = role_matches
+
+                results["search_strategy"] = f"role:{detected_role}"
+            else:
+                # Regular text-based tree search
+                tree_matches = self._search_tree(query)
+                results["search_strategy"] = "tree_text"
+
             if tree_matches:
                 results["found"] = True
                 results["tree_matches"] = tree_matches[:remaining_limit]
@@ -64,6 +121,27 @@ class SearchTool:
         results["summary"] = self._generate_summary(results)
 
         return results
+
+    def _detect_role_query(self, query: str) -> Optional[str]:
+        """Detect if query is asking for a specific element type/role.
+
+        Args:
+            query: Search query
+
+        Returns:
+            Detected role name, or None if not a role query
+        """
+        query_lower = query.lower()
+
+        # Sort keywords by length (longest first) to match "radio button" before "button"
+        sorted_keywords = sorted(self.role_keywords.items(), key=lambda x: len(x[0]), reverse=True)
+
+        # Check for matches (longest keywords first)
+        for keyword, role in sorted_keywords:
+            if keyword in query_lower:
+                return role
+
+        return None
 
     def _search_text(self, query: str, max_results: int = 15) -> List[Dict[str, Any]]:
         """Search in page text.
@@ -164,22 +242,30 @@ class SearchTool:
             query = results['query']
             suggestions = []
 
-            # Suggest shorter query if current query is long
-            if len(query) > 15:
-                suggestions.append(f"try shorter: '{query[:10]}...'")
+            # Check if they're searching for element types (semantic queries)
+            query_lower = query.lower()
+            detected_role = self._detect_role_query(query)
 
-            # Suggest different case if query has mixed case
-            if query != query.lower() and query != query.upper():
-                suggestions.append(f"try '{query.lower()}' or '{query.upper()}'")
-            elif query.islower():
-                suggestions.append(f"try uppercase: '{query.upper()}'")
-            elif query.isupper():
-                suggestions.append(f"try lowercase: '{query.lower()}'")
+            if detected_role and results.get("search_strategy", "").startswith("role:"):
+                # They searched by role but nothing found
+                suggestions.append(f"no {detected_role} elements on page")
+                suggestions.append("try browser_find() to locate visually")
+            elif any(keyword in query_lower for keyword in ["button", "input", "radio", "checkbox", "field"]):
+                # They're asking about element types but search was text-based
+                suggestions.append("searching for element TYPE, not text")
+                suggestions.append(f"page may not have literal text '{query}'")
+                suggestions.append("try visible text like 'Submit' or 'Option A'")
+            else:
+                # Regular text search failed
+                # Suggest shorter query if current query is long
+                if len(query) > 15:
+                    suggestions.append(f"try shorter: '{query[:10]}...'")
 
-            # Suggest checking screenshot
-            suggestions.append("check screenshot for actual text")
+                # Suggest visible text from screenshot
+                suggestions.append("search for VISIBLE text from screenshot")
+                suggestions.append(f"example: 'Option C' not 'radio button'")
 
-            suggestion_text = " | ".join(suggestions[:2]) if suggestions else "try different text"
+            suggestion_text = " | ".join(suggestions[:2]) if suggestions else "try visible text from screenshot"
             return f"❌ No matches found for '{query}' → {suggestion_text}"
 
         parts = []
@@ -286,6 +372,56 @@ class SearchTool:
                 "tree_matches": matches,
                 "summary": f"Found {len(matches)} input field(s)" if matches else "No input fields found"
             }
+
+    def find_radio_buttons(self, label_text: str = None) -> Dict[str, Any]:
+        """Convenience method to find radio buttons.
+
+        Args:
+            label_text: Optional text to match radio button label (None for all)
+
+        Returns:
+            Search results for radio buttons
+        """
+        matches = self._find_by_role("radio")
+
+        # Filter by label text if provided
+        if label_text and matches:
+            label_lower = label_text.lower()
+            filtered = [m for m in matches if label_lower in m.get("name", "").lower()]
+            matches = filtered
+
+        query_text = f"radio buttons with '{label_text}'" if label_text else "all radio buttons"
+        return {
+            "query": query_text,
+            "found": len(matches) > 0,
+            "tree_matches": matches,
+            "summary": f"Found {len(matches)} radio button(s)" if matches else "No radio buttons found"
+        }
+
+    def find_checkboxes(self, label_text: str = None) -> Dict[str, Any]:
+        """Convenience method to find checkboxes.
+
+        Args:
+            label_text: Optional text to match checkbox label (None for all)
+
+        Returns:
+            Search results for checkboxes
+        """
+        matches = self._find_by_role("checkbox")
+
+        # Filter by label text if provided
+        if label_text and matches:
+            label_lower = label_text.lower()
+            filtered = [m for m in matches if label_lower in m.get("name", "").lower()]
+            matches = filtered
+
+        query_text = f"checkboxes with '{label_text}'" if label_text else "all checkboxes"
+        return {
+            "query": query_text,
+            "found": len(matches) > 0,
+            "tree_matches": matches,
+            "summary": f"Found {len(matches)} checkbox(es)" if matches else "No checkboxes found"
+        }
 
     def _find_by_role(self, role: str, node: Optional[dict] = None, path: str = "") -> List[Dict[str, Any]]:
         """Find all elements with specific role.
