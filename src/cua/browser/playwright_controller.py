@@ -957,17 +957,43 @@ class PlaywrightController:
                         return text.trim();
                     };
 
+                    // Helper to validate if a class name is CSS-safe
+                    const isValidCSSClass = (className) => {
+                        // CSS class names cannot contain: : [ ] ( ) & < > ! @ # $ % ^ * + = ~ ` " ' | \\ / ? ,
+                        // Also skip Tailwind arbitrary variants like [&_svg] and pseudo-class variants like focus-visible:
+                        return !/[:[\]()&<>!@#$%^*+=~`"'|\\/?]/.test(className);
+                    };
+
                     // Helper to generate unique CSS selector
                     const generateSelector = (el) => {
                         let selector = el.tagName.toLowerCase();
 
                         if (el.id) {
-                            selector = '#' + el.id;
+                            // ID is best - short and unique
+                            return '#' + CSS.escape(el.id);
                         } else if (el.className && typeof el.className === 'string') {
-                            const classes = el.className.split(' ').filter(c => c.trim());
+                            const classes = el.className.split(' ')
+                                .map(c => c.trim())
+                                .filter(c => c && isValidCSSClass(c));
+
                             if (classes.length > 0) {
-                                // Use all classes for better specificity
-                                selector += '.' + classes.join('.');
+                                // Use only first 2-3 valid classes to keep selector short and readable
+                                // Prioritize semantic classes over utility classes
+                                const semanticClasses = classes.filter(c =>
+                                    !c.startsWith('h-') &&
+                                    !c.startsWith('w-') &&
+                                    !c.startsWith('p-') &&
+                                    !c.startsWith('m-') &&
+                                    !c.startsWith('text-') &&
+                                    !c.startsWith('bg-') &&
+                                    !c.startsWith('flex') &&
+                                    !c.startsWith('grid')
+                                ).slice(0, 2);
+
+                                const selectedClasses = semanticClasses.length > 0 ?
+                                    semanticClasses : classes.slice(0, 2);
+
+                                selector += '.' + selectedClasses.map(c => CSS.escape(c)).join('.');
                             }
                         }
 

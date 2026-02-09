@@ -1584,12 +1584,15 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
             dom_action_type = action.params.get("action_type", "unknown")
             if dom_action_type == "click_selector":
                 selector = action.params.get("selector", "")
-                return f"DOM Click: {selector}"
+                # Truncate very long selectors for readability
+                truncated_selector = selector[:80] + "..." if len(selector) > 80 else selector
+                return f"DOM Click: {truncated_selector}"
             elif dom_action_type == "fill_selector":
                 selector = action.params.get("selector", "")
                 text = action.params.get("text", "")
-                truncated = text[:30] + "..." if len(text) > 30 else text
-                return f"DOM Fill: {selector} = '{truncated}'"
+                truncated_text = text[:30] + "..." if len(text) > 30 else text
+                truncated_selector = selector[:60] + "..." if len(selector) > 60 else selector
+                return f"DOM Fill: {truncated_selector} = '{truncated_text}'"
             elif dom_action_type == "find_selectors":
                 search_text = action.params.get("search_text", "")
                 return f"DOM Find: '{search_text}'"
