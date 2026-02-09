@@ -894,6 +894,14 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                         )
                         action_evidence_map[action.id] = evidence
 
+                        # DEBUG: Log what we're storing
+                        print(f"[DEBUG EVIDENCE] Stored evidence for action {action.id}")
+                        print(f"  - has screenshot: {action_screenshot is not None}")
+                        print(f"  - has page_text: {action_page_text is not None}")
+                        print(f"  - has page_text_diff: {action_page_text_diff is not None}")
+                        print(f"  - has a11y_tree: {action_a11y_tree is not None}")
+                        print(f"  - has a11y_diff: {action_a11y_diff is not None}")
+
                         # Update last URL for next iteration
                         last_url = current_url
 
@@ -1173,6 +1181,13 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
 
                 # Continue conversation (only with recent screenshots in context)
                 # Pass search results if any, and combined messages if detected
+                # DEBUG: Log what we're passing to provider
+                print(f"[DEBUG LOOP] Calling create_continuation_request")
+                print(f"  - multi_action_evidence enabled: {self.multi_action_evidence}")
+                print(f"  - action_evidence_map entries: {len(action_evidence_map)}")
+                for action_id, evidence in action_evidence_map.items():
+                    print(f"    - {action_id}: a11y_tree={evidence.accessibility_tree is not None}, a11y_diff={evidence.accessibility_tree_diff is not None}")
+
                 response = self.provider.create_continuation_request(
                     screenshot=screenshot,
                     accessibility_tree=accessibility_tree if self.use_accessibility_tree else None,
