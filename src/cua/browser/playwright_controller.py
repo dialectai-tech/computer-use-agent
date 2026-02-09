@@ -192,11 +192,25 @@ class PlaywrightController:
                         const value = getAccessibleValue(element);
                         const state = getAccessibleState(element);
 
-                        // Skip if no meaningful a11y info
-                        if (!role && !name && !value && Object.keys(state).length === 0) {
+                        // STRICT FILTER: Only include elements with semantic roles
+                        // This prevents text-only divs from bloating the tree
+                        // We want interactive/structural elements, not generic containers
+                        if (!role) {
+                            // No role - recurse to children but don't create node
+                            const children = [];
+                            if (depth < maxDepth && element.children) {
+                                for (let child of element.children) {
+                                    const childNode = getAccessibilityInfo(child, depth);
+                                    if (childNode) children.push(childNode);
+                                }
+                            }
+                            // Return first child if only one, otherwise return all
+                            if (children.length === 1) return children[0];
+                            if (children.length > 1) return { role: 'generic', name: '', children };
                             return null;
                         }
 
+                        // Has role - create node
                         const node = { role, name, value, ...state, children: [] };
 
                         // Process children
@@ -216,26 +230,50 @@ class PlaywrightController:
                         const roles = {
                             'button': 'button',
                             'a': el.hasAttribute('href') ? 'link' : null,
-                            'input': type === 'checkbox' ? 'checkbox' : type === 'radio' ? 'radio' : 'textbox',
+                            'input': type === 'checkbox' ? 'checkbox' : type === 'radio' ? 'radio' : type === 'button' ? 'button' : 'textbox',
                             'textarea': 'textbox', 'select': 'combobox', 'img': 'img',
                             'h1': 'heading', 'h2': 'heading', 'h3': 'heading',
-                            'nav': 'navigation', 'main': 'main', 'form': 'form'
+                            'h4': 'heading', 'h5': 'heading', 'h6': 'heading',
+                            'nav': 'navigation', 'main': 'main', 'form': 'form',
+                            'ul': 'list', 'ol': 'list', 'li': 'listitem'
                         };
                         return roles[tag] || null;
                     }
 
                     function getAccessibleName(el) {
-                        return el.getAttribute('aria-label') ||
-                               el.getAttribute('title') ||
-                               el.getAttribute('alt') ||
-                               el.getAttribute('placeholder') ||
-                               (el.labels?.[0]?.textContent) ||
-                               el.textContent?.trim().substring(0, 100) || '';
+                        // Priority: explicit labels over content
+                        const explicitLabel = el.getAttribute('aria-label') ||
+                                            el.getAttribute('title') ||
+                                            el.getAttribute('alt') ||
+                                            el.getAttribute('placeholder') ||
+                                            (el.labels?.[0]?.textContent?.trim());
+
+                        if (explicitLabel) return explicitLabel.substring(0, 100);
+
+                        // For buttons/links, use direct text only (not nested content)
+                        const tag = el.tagName.toLowerCase();
+                        if (tag === 'button' || (tag === 'a' && el.hasAttribute('href'))) {
+                            // Get only direct text nodes, not deeply nested content
+                            let text = '';
+                            for (let node of el.childNodes) {
+                                if (node.nodeType === Node.TEXT_NODE) {
+                                    text += node.textContent;
+                                }
+                            }
+                            return text.trim().substring(0, 100);
+                        }
+
+                        // For headings, get text content
+                        if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+                            return el.textContent?.trim().substring(0, 100) || '';
+                        }
+
+                        return '';
                     }
 
                     function getAccessibleValue(el) {
                         const tag = el.tagName.toLowerCase();
-                        if (tag === 'input' || tag === 'textarea') return el.value;
+                        if (tag === 'input' || tag === 'textarea') return el.value || '';
                         if (tag === 'select') return el.options[el.selectedIndex]?.text || '';
                         return '';
                     }

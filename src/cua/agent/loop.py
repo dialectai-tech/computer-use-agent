@@ -1542,8 +1542,18 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
         action_type = action.type.value
 
         if action.type.value == "click":
-            x = action.params.get("x", action.params.get("coordinate", [0, 0])[0])
-            y = action.params.get("y", action.params.get("coordinate", [0, 0])[1])
+            # Check for coordinate in different formats
+            if "coordinate" in action.params and isinstance(action.params["coordinate"], list):
+                x, y = action.params["coordinate"][0], action.params["coordinate"][1]
+            elif "x" in action.params and "y" in action.params:
+                x, y = action.params["x"], action.params["y"]
+            elif "target" in action.params:
+                # AI provided target but no coordinates
+                target = action.params["target"]
+                return f"Click (target: '{target[:30]}...' - no coords)" if len(target) > 30 else f"Click (target: '{target}' - no coords)"
+            else:
+                # No coordinates found - will use center
+                return "Click (using screen center)"
             return f"Click at ({x}, {y})"
         elif action.type.value == "type":
             text = action.params.get("text", "")
