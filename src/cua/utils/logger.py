@@ -117,6 +117,41 @@ class AgentLogger:
                 f.write(f"Data: {json.dumps(data, indent=2)}\n")
             f.write("\n")
 
+    def log_api_message(
+        self,
+        direction: str,  # "SEND" or "RECEIVE"
+        content: Any,
+        truncate_at: int = 500,
+        iteration: Optional[int] = None
+    ):
+        """Log API messages (sent to or received from AI) with truncation.
+
+        Args:
+            direction: "SEND" or "RECEIVE"
+            content: Message content (will be converted to string and truncated)
+            truncate_at: Maximum characters to log (default: 500)
+            iteration: Optional iteration number
+        """
+        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]  # Include milliseconds
+
+        # Convert content to string if not already
+        if isinstance(content, dict):
+            content_str = json.dumps(content, indent=None)
+        elif isinstance(content, list):
+            content_str = json.dumps(content, indent=None)
+        else:
+            content_str = str(content)
+
+        # Truncate if needed
+        if len(content_str) > truncate_at:
+            content_str = content_str[:truncate_at] + f"... ({len(content_str) - truncate_at} more chars)"
+
+        # Write to log file
+        with open(self.log_file, "a") as f:
+            iter_str = f" [Iteration {iteration}]" if iteration else ""
+            f.write(f"[{timestamp}] {direction}{iter_str}:\n")
+            f.write(f"{content_str}\n\n")
+
     def log_phase_transition(self, from_phase: int, to_phase: int, reason: str):
         """Log two-phase workflow transitions.
 
