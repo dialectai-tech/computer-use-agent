@@ -517,7 +517,7 @@ class BedrockProvider(ComputerUseProvider):
 ❌ Don't pass empty query: query=""
 ✓ Do use SHORT specific text: query="Reveal"
 ✓ Do try multiple variations: "Submit", then "submit", then "button"
-✓ Do check if zero results means element doesn't exist or you need different query,
+✓ Do check if zero results means element doesn't exist or you need different query""",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -764,7 +764,6 @@ class BedrockProvider(ComputerUseProvider):
                 action_evidence = action_evidence_map[tool_id]
                 if action_evidence.screenshot:
                     # Convert bytes to base64 string if needed
-                    import base64
                     if isinstance(action_evidence.screenshot, bytes):
                         action_screenshot = base64.b64encode(action_evidence.screenshot).decode('utf-8')
                     else:
@@ -982,7 +981,7 @@ class BedrockProvider(ComputerUseProvider):
 
 **Workflow:** 1) search_page_content to confirm text exists, 2) browser_find to navigate to it, 3) computer to click
 
-**Best Practices:** Use EXACT text from search_page_content results. Case-sensitive. Don't use for text that might not exist.,
+**Best Practices:** Use EXACT text from search_page_content results. Case-sensitive. Don't use for text that might not exist.""",
                 "input_schema": {
                     "type": "object",
                     "properties": {

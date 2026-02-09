@@ -267,7 +267,10 @@ def cli(
             try:
                 ai_provider = BedrockProvider(model=model, region=region)
             except Exception as e:
+                import traceback
                 console.print(f"[bold red]Error initializing Bedrock provider: {str(e)}[/bold red]")
+                console.print("\n[yellow]Full traceback:[/yellow]")
+                console.print(traceback.format_exc())
                 console.print("\nPlease ensure you have valid AWS credentials configured.")
                 sys.exit(1)
 
@@ -276,7 +279,10 @@ def cli(
             sys.exit(1)
 
     except Exception as e:
+        import traceback
         console.print(f"[bold red]Error initializing provider: {str(e)}[/bold red]")
+        console.print("\n[yellow]Full traceback:[/yellow]")
+        console.print(traceback.format_exc())
         sys.exit(1)
 
     # Ensure URL has protocol

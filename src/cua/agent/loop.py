@@ -1245,7 +1245,10 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
             )
 
         except Exception as e:
+            import traceback
             self.console.print(f"\n[bold red]✗ Error: {str(e)}[/bold red]")
+            self.console.print("\n[yellow]Full traceback:[/yellow]")
+            self.console.print(traceback.format_exc())
 
             total_time = time.time() - start_time
             return TaskResult(

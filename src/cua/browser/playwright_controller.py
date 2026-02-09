@@ -188,6 +188,9 @@ class PlaywrightController:
             return simplified
         except Exception as e:
             # Return empty tree if accessibility snapshot fails
+            import traceback
+            print(f"[ERROR] get_accessibility_tree failed: {e}")
+            print(traceback.format_exc())
             return {"error": str(e), "tree": None}
 
     def _simplify_accessibility_tree(self, node: dict, depth: int = 0, max_depth: int = 10) -> dict:
@@ -512,6 +515,9 @@ class PlaywrightController:
             """)
             return text
         except Exception as e:
+            import traceback
+            print(f"[ERROR] get_page_text failed: {e}")
+            print(traceback.format_exc())
             return f"Error extracting page text: {str(e)}"
 
     def get_page_info(self) -> dict:
@@ -659,6 +665,9 @@ class PlaywrightController:
                 "selector": selector
             }
         except Exception as e:
+            import traceback
+            print(f"[ERROR] click_selector failed for '{selector}': {e}")
+            print(traceback.format_exc())
             return {
                 "success": False,
                 "action": "click_selector",
@@ -689,6 +698,9 @@ class PlaywrightController:
                 "text": text
             }
         except Exception as e:
+            import traceback
+            print(f"[ERROR] fill_selector failed for '{selector}': {e}")
+            print(traceback.format_exc())
             return {
                 "success": False,
                 "action": "fill_selector",
