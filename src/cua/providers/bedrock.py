@@ -753,36 +753,21 @@ class BedrockProvider(ComputerUseProvider):
             for tool_id, result in search_results:
                 search_results_dict[tool_id] = result
 
-        # DEBUG: Log what we received
-        print(f"[DEBUG PROVIDER] Processing {len(self.last_tool_uses)} tool uses")
-        print(f"[DEBUG PROVIDER] action_evidence_map is None: {action_evidence_map is None}")
-        if action_evidence_map:
-            print(f"[DEBUG PROVIDER] action_evidence_map has {len(action_evidence_map)} entries")
-            for k in action_evidence_map.keys():
-                print(f"[DEBUG PROVIDER]   - action_id: {k}")
-
         for tool_use in self.last_tool_uses:
             tool_id = tool_use.get('toolUseId')
             tool_name = tool_use.get('name')
-
-            print(f"[DEBUG PROVIDER] Processing tool_id: {tool_id}, tool_name: {tool_name}")
 
             # Multi-action mode: Get evidence for this specific action
             action_evidence = None
             action_screenshot = None
             if action_evidence_map and tool_id in action_evidence_map:
                 action_evidence = action_evidence_map[tool_id]
-                print(f"[DEBUG PROVIDER]   - Found evidence for {tool_id}")
-                print(f"[DEBUG PROVIDER]     - has a11y_tree: {action_evidence.accessibility_tree is not None}")
-                print(f"[DEBUG PROVIDER]     - has a11y_diff: {action_evidence.accessibility_tree_diff is not None}")
                 if action_evidence.screenshot:
                     # Convert bytes to base64 string if needed
                     if isinstance(action_evidence.screenshot, bytes):
                         action_screenshot = base64.b64encode(action_evidence.screenshot).decode('utf-8')
                     else:
                         action_screenshot = action_evidence.screenshot
-            else:
-                print(f"[DEBUG PROVIDER]   - NO evidence found for {tool_id}")
 
             # Use per-action screenshot if available, otherwise use shared screenshot
             tool_screenshot = action_screenshot if action_screenshot else screenshot
@@ -882,9 +867,7 @@ class BedrockProvider(ComputerUseProvider):
 
             # Add accessibility tree or semantic diff
             if action_evidence:
-                print(f"[DEBUG PROVIDER]   - Checking a11y content for {tool_id}")
                 if action_evidence.accessibility_tree:
-                    print(f"[DEBUG PROVIDER]   - Adding FULL a11y tree to result_content")
                     # Full tree (baseline or large diff)
                     # IMPORTANT: Truncate tree for LLM (token efficiency)
                     # but evidence still contains full tree for accurate diffs
@@ -897,16 +880,11 @@ class BedrockProvider(ComputerUseProvider):
                     )
                     tree_str = self._format_a11y_tree_compact(truncated_tree, max_depth=15)
                     result_content.append({"text": f"\n\n**Accessibility Tree (Baseline):**\n```\n{tree_str}\n```"})
-                    print(f"[DEBUG PROVIDER]   - Added a11y tree ({len(tree_str)} chars)")
 
                 elif action_evidence.accessibility_tree_diff:
-                    print(f"[DEBUG PROVIDER]   - Adding a11y DIFF to result_content")
                     # Semantic diff (incremental update)
                     diff_summary = action_evidence.accessibility_tree_diff.summary
                     result_content.append({"text": f"\n{diff_summary}"})
-                    print(f"[DEBUG PROVIDER]   - Added a11y diff ({len(diff_summary)} chars)")
-                else:
-                    print(f"[DEBUG PROVIDER]   - No a11y tree or diff in evidence")
 
             tool_result_content.append({
                 "toolResult": {
