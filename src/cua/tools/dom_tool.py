@@ -141,26 +141,30 @@ class DOMTool:
             if result.get("success") and result.get("matches"):
                 matches = result["matches"]
 
-                # Pick best selector (prefer ID, then class, then tag)
-                best_selector = None
-                for match in matches:
-                    selector = match.get("selector", "")
-                    if '#' in selector:
-                        best_selector = selector
-                        break
-                    elif '.' in selector and not best_selector:
-                        best_selector = selector
-                    elif not best_selector:
-                        best_selector = selector
+                # Matches are already sorted by score (highest first)
+                # Pick the best match (first in list = highest score)
+                best_match = matches[0]
+                best_selector = best_match.get("selector", "")
+                matched_text = best_match.get("matchedText", best_match.get("text", ""))[:60]
 
                 result["recommended_selector"] = best_selector
-                result["message"] = f"Found {len(matches)} match(es). Use: {best_selector}"
+                result["message"] = f"Found {len(matches)} match(es). Best: {best_selector}"
 
-                # Add helpful summary
+                # Add helpful summary with matched text for verification
                 if len(matches) == 1:
-                    result["summary"] = f"✓ Found 1 element. Next: click_selector(selector='{best_selector}')"
+                    result["summary"] = f"✓ Found 1 element: \"{matched_text}\". Next: click_selector(selector='{best_selector}')"
                 else:
-                    result["summary"] = f"✓ Found {len(matches)} elements. Use first: click_selector(selector='{best_selector}')"
+                    # Show first 3 matches for context
+                    match_list = []
+                    for i, m in enumerate(matches[:3]):
+                        text = m.get("matchedText", m.get("text", ""))[:40]
+                        match_list.append(f"{i+1}. \"{text}\" → {m.get('selector', 'unknown')}")
+
+                    matches_str = "\n".join(match_list)
+                    if len(matches) > 3:
+                        matches_str += f"\n... and {len(matches) - 3} more"
+
+                    result["summary"] = f"✓ Found {len(matches)} elements. Using highest-scored match:\n{matches_str}\n\nRecommended: click_selector(selector='{best_selector}')"
 
             return result
 

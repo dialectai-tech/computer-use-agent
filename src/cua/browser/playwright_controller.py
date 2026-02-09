@@ -783,14 +783,36 @@ class PlaywrightController:
             if element_count > 1:
                 print(f"[WARNING] Selector '{selector}' matches {element_count} elements. Clicking first match.")
 
-            # Increase timeout to 10 seconds for dynamic content
-            self.page.click(selector, timeout=10000)
-            time.sleep(0.5)
-            return {
-                "success": True,
-                "action": "click_selector",
-                "selector": selector
-            }
+            # Try normal click first (with actionability checks)
+            try:
+                self.page.click(selector, timeout=10000)
+                time.sleep(0.5)
+                return {
+                    "success": True,
+                    "action": "click_selector",
+                    "selector": selector
+                }
+            except Exception as click_error:
+                # If normal click fails due to element interception, try force click
+                if "intercepts pointer events" in str(click_error) or "Timeout" in str(click_error):
+                    print(f"[INFO] Normal click failed (element obstructed), retrying with force=True")
+                    try:
+                        self.page.click(selector, timeout=5000, force=True)
+                        time.sleep(0.5)
+                        return {
+                            "success": True,
+                            "action": "click_selector",
+                            "selector": selector,
+                            "note": "Clicked with force=True to bypass obstructing elements"
+                        }
+                    except Exception as force_error:
+                        # Force click also failed, raise original error
+                        print(f"[ERROR] Force click also failed: {force_error}")
+                        raise click_error
+                else:
+                    # Other error, re-raise
+                    raise click_error
+
         except Exception as e:
             import traceback
             print(f"[ERROR] click_selector failed for '{selector}': {e}")
@@ -798,8 +820,8 @@ class PlaywrightController:
 
             # Provide helpful error message
             error_msg = str(e)
-            if "Timeout" in error_msg:
-                error_msg += f" | Element '{selector}' exists but not clickable within 10s. May be hidden, disabled, or obstructed. Try find_selectors to find better selector."
+            if "Timeout" in error_msg or "intercepts pointer events" in error_msg:
+                error_msg = f"Element '{selector}' exists but not clickable (may be obstructed by popups/modals). Try closing overlays first or use coordinates."
             elif "querySelectorAll" in error_msg:
                 error_msg = f"Invalid CSS selector '{selector}'. Use find_selectors to get valid selector."
 
@@ -940,7 +962,7 @@ class PlaywrightController:
             raise RuntimeError("Browser not started. Call start() first.")
 
         try:
-            results = self.page.evaluate("""
+            results = self.page.evaluate(r"""
                 ([text, limit]) => {
                     // Find all elements containing the text
                     const allElements = Array.from(document.querySelectorAll('*'));
@@ -977,8 +999,8 @@ class PlaywrightController:
                                 .filter(c => c && isValidCSSClass(c));
 
                             if (classes.length > 0) {
-                                // Use only first 2-3 valid classes to keep selector short and readable
-                                // Prioritize semantic classes over utility classes
+                                // Use 3-5 valid classes for better specificity
+                                // Prioritize semantic/meaningful classes over pure utility classes
                                 const semanticClasses = classes.filter(c =>
                                     !c.startsWith('h-') &&
                                     !c.startsWith('w-') &&
@@ -987,13 +1009,20 @@ class PlaywrightController:
                                     !c.startsWith('text-') &&
                                     !c.startsWith('bg-') &&
                                     !c.startsWith('flex') &&
-                                    !c.startsWith('grid')
-                                ).slice(0, 2);
+                                    !c.startsWith('grid') &&
+                                    !c.startsWith('gap-') &&
+                                    !c.startsWith('space-') &&
+                                    !c.startsWith('justify-') &&
+                                    !c.startsWith('items-')
+                                );
 
+                                // Use semantic classes if available (up to 3), otherwise use first 5 classes
                                 const selectedClasses = semanticClasses.length > 0 ?
-                                    semanticClasses : classes.slice(0, 2);
+                                    semanticClasses.slice(0, 3) : classes.slice(0, 5);
 
-                                selector += '.' + selectedClasses.map(c => CSS.escape(c)).join('.');
+                                if (selectedClasses.length > 0) {
+                                    selector += '.' + selectedClasses.map(c => CSS.escape(c)).join('.');
+                                }
                             }
                         }
 
@@ -1021,12 +1050,31 @@ class PlaywrightController:
                         if (hasDirectMatch || hasFullMatch || hasValueMatch || hasPlaceholderMatch || hasAriaMatch) {
                             // Calculate match quality score
                             let score = 0;
-                            if (hasDirectMatch) score += 100; // Best: direct text content
-                            else if (hasFullMatch) score += 50; // OK: inherited from children
 
-                            if (hasValueMatch) score += 80;
-                            if (hasPlaceholderMatch) score += 70;
-                            if (hasAriaMatch) score += 60;
+                            // Strongly prefer exact text matches
+                            if (hasDirectMatch) {
+                                if (directText === text) {
+                                    score += 200; // BEST: exact match in direct text
+                                } else {
+                                    score += 100; // Good: substring match in direct text
+                                }
+                            } else if (hasFullMatch) {
+                                if (fullText === text) {
+                                    score += 150; // Exact match in full text
+                                } else {
+                                    score += 50; // Substring match in inherited text
+                                }
+                            }
+
+                            if (hasValueMatch) {
+                                score += (value === text) ? 160 : 80;
+                            }
+                            if (hasPlaceholderMatch) {
+                                score += (placeholder === text) ? 140 : 70;
+                            }
+                            if (hasAriaMatch) {
+                                score += (ariaLabel === text) ? 120 : 60;
+                            }
 
                             // Prefer interactive elements
                             const interactiveTags = ['button', 'a', 'input', 'select', 'textarea'];
@@ -1043,9 +1091,13 @@ class PlaywrightController:
                             // Get position for uniqueness
                             const rect = el.getBoundingClientRect();
 
+                            // Store matched text for verification
+                            const matchedText = hasDirectMatch ? directText : (hasFullMatch ? fullText : (hasValueMatch ? value : (hasPlaceholderMatch ? placeholder : ariaLabel)));
+
                             matches.push({
                                 selector: generateSelector(el),
                                 tag: el.tagName.toLowerCase(),
+                                matchedText: matchedText.substring(0, 100),
                                 text: fullText.substring(0, 100),
                                 directText: directText.substring(0, 100),
                                 value: value.substring(0, 50),
