@@ -906,6 +906,9 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                     if not result.get("success"):
                         self.console.print(f"  [red]✗ Error: {result.get('error')}[/red]")
 
+                # Display iteration action summary
+                self._print_iteration_summary(actions, action_evidence_map if self.multi_action_evidence else None)
+
                 # Two-phase workflow: Check if we need to transition from phase 1 to phase 2
                 if self.two_phase_workflow and self.current_phase == 1 and search_results:
                     self.console.print(f"\n[cyan]→ Transitioning to Phase 2 (Action with Screenshot)[/cyan]")
@@ -1603,3 +1606,41 @@ Remember: Keep working through ALL tasks until you reach Task {total_tasks}."""
             return f"Context Reset: {truncated_reason}"
         else:
             return f"{action_type.title()}"
+
+    def _print_iteration_summary(self, actions: list, action_evidence_map: dict = None):
+        """Print a summary of actions taken in this iteration.
+
+        Args:
+            actions: List of actions executed
+            action_evidence_map: Optional map of action IDs to ActionEvidence (for success/fail tracking)
+        """
+        if not actions:
+            return
+
+        # Count action types and success/failure
+        action_type_counts = {}
+        success_count = 0
+        fail_count = 0
+
+        for action in actions:
+            action_type = action.type.value
+            action_type_counts[action_type] = action_type_counts.get(action_type, 0) + 1
+
+            # Track success/failure if we have evidence
+            if action_evidence_map and action.id in action_evidence_map:
+                evidence = action_evidence_map[action.id]
+                if evidence.result and evidence.result.get("success"):
+                    success_count += 1
+                else:
+                    fail_count += 1
+
+        # Build summary string
+        total_actions = len(actions)
+        action_summary = ", ".join([f"{count}x {atype}" for atype, count in action_type_counts.items()])
+
+        # Show success/failure if we tracked it
+        if action_evidence_map:
+            status_summary = f"{success_count} succeeded, {fail_count} failed" if fail_count > 0 else f"all succeeded"
+            self.console.print(f"  [dim]📊 Summary: {total_actions} action(s) - {action_summary} ({status_summary})[/dim]")
+        else:
+            self.console.print(f"  [dim]📊 Summary: {total_actions} action(s) - {action_summary}[/dim]")
