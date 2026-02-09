@@ -767,7 +767,24 @@ class PlaywrightController:
             raise RuntimeError("Browser not started. Call start() first.")
 
         try:
-            self.page.click(selector, timeout=5000)
+            # First check if element exists at all
+            element_count = self.page.evaluate(f"""
+                document.querySelectorAll('{selector}').length
+            """)
+
+            if element_count == 0:
+                return {
+                    "success": False,
+                    "action": "click_selector",
+                    "selector": selector,
+                    "error": f"Selector '{selector}' not found on page. Use find_selectors to get valid selector."
+                }
+
+            if element_count > 1:
+                print(f"[WARNING] Selector '{selector}' matches {element_count} elements. Clicking first match.")
+
+            # Increase timeout to 10 seconds for dynamic content
+            self.page.click(selector, timeout=10000)
             time.sleep(0.5)
             return {
                 "success": True,
@@ -778,11 +795,19 @@ class PlaywrightController:
             import traceback
             print(f"[ERROR] click_selector failed for '{selector}': {e}")
             print(traceback.format_exc())
+
+            # Provide helpful error message
+            error_msg = str(e)
+            if "Timeout" in error_msg:
+                error_msg += f" | Element '{selector}' exists but not clickable within 10s. May be hidden, disabled, or obstructed. Try find_selectors to find better selector."
+            elif "querySelectorAll" in error_msg:
+                error_msg = f"Invalid CSS selector '{selector}'. Use find_selectors to get valid selector."
+
             return {
                 "success": False,
                 "action": "click_selector",
                 "selector": selector,
-                "error": str(e)
+                "error": error_msg
             }
 
     def fill_selector(self, selector: str, text: str) -> dict:
@@ -799,7 +824,24 @@ class PlaywrightController:
             raise RuntimeError("Browser not started. Call start() first.")
 
         try:
-            self.page.fill(selector, text, timeout=5000)
+            # Check if element exists
+            element_count = self.page.evaluate(f"""
+                document.querySelectorAll('{selector}').length
+            """)
+
+            if element_count == 0:
+                return {
+                    "success": False,
+                    "action": "fill_selector",
+                    "selector": selector,
+                    "error": f"Selector '{selector}' not found on page. Use find_selectors to get valid selector."
+                }
+
+            if element_count > 1:
+                print(f"[WARNING] Selector '{selector}' matches {element_count} elements. Filling first match.")
+
+            # Increase timeout to 10 seconds
+            self.page.fill(selector, text, timeout=10000)
             time.sleep(0.3)
             return {
                 "success": True,
@@ -811,11 +853,19 @@ class PlaywrightController:
             import traceback
             print(f"[ERROR] fill_selector failed for '{selector}': {e}")
             print(traceback.format_exc())
+
+            # Provide helpful error message
+            error_msg = str(e)
+            if "Timeout" in error_msg:
+                error_msg += f" | Element '{selector}' exists but not fillable within 10s. May be hidden, disabled, or not an input field. Try find_selectors to find better selector."
+            elif "querySelectorAll" in error_msg:
+                error_msg = f"Invalid CSS selector '{selector}'. Use find_selectors to get valid selector."
+
             return {
                 "success": False,
                 "action": "fill_selector",
                 "selector": selector,
-                "error": str(e)
+                "error": error_msg
             }
 
     def get_element_info(self, selector: str) -> dict:
@@ -896,45 +946,94 @@ class PlaywrightController:
                     const allElements = Array.from(document.querySelectorAll('*'));
                     const matches = [];
 
+                    // Helper to get direct text content (excluding children)
+                    const getDirectText = (el) => {
+                        let text = '';
+                        for (let node of el.childNodes) {
+                            if (node.nodeType === Node.TEXT_NODE) {
+                                text += node.textContent || '';
+                            }
+                        }
+                        return text.trim();
+                    };
+
+                    // Helper to generate unique CSS selector
+                    const generateSelector = (el) => {
+                        let selector = el.tagName.toLowerCase();
+
+                        if (el.id) {
+                            selector = '#' + el.id;
+                        } else if (el.className && typeof el.className === 'string') {
+                            const classes = el.className.split(' ').filter(c => c.trim());
+                            if (classes.length > 0) {
+                                // Use all classes for better specificity
+                                selector += '.' + classes.join('.');
+                            }
+                        }
+
+                        return selector;
+                    };
+
                     for (const el of allElements) {
                         // Skip script, style, and non-visible elements
                         if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
-                        if (el.offsetParent === null) continue;
+                        if (el.offsetParent === null && el.tagName !== 'BODY') continue;
 
-                        const textContent = (el.textContent || el.innerText || '').trim();
+                        const fullText = (el.textContent || el.innerText || '').trim();
+                        const directText = getDirectText(el);
                         const value = el.value || '';
                         const placeholder = el.placeholder || '';
+                        const ariaLabel = el.getAttribute('aria-label') || '';
 
-                        if (textContent.includes(text) || value.includes(text) || placeholder.includes(text)) {
-                            // Generate CSS selector
-                            let selector = el.tagName.toLowerCase();
+                        // Check if text matches (prefer direct text matches)
+                        const hasDirectMatch = directText.includes(text);
+                        const hasFullMatch = fullText.includes(text);
+                        const hasValueMatch = value.includes(text);
+                        const hasPlaceholderMatch = placeholder.includes(text);
+                        const hasAriaMatch = ariaLabel.includes(text);
 
-                            if (el.id) {
-                                selector = '#' + el.id;
-                            } else if (el.className) {
-                                const classes = el.className.split(' ').filter(c => c.trim());
-                                if (classes.length > 0) {
-                                    selector += '.' + classes[0];
-                                }
+                        if (hasDirectMatch || hasFullMatch || hasValueMatch || hasPlaceholderMatch || hasAriaMatch) {
+                            // Calculate match quality score
+                            let score = 0;
+                            if (hasDirectMatch) score += 100; // Best: direct text content
+                            else if (hasFullMatch) score += 50; // OK: inherited from children
+
+                            if (hasValueMatch) score += 80;
+                            if (hasPlaceholderMatch) score += 70;
+                            if (hasAriaMatch) score += 60;
+
+                            // Prefer interactive elements
+                            const interactiveTags = ['button', 'a', 'input', 'select', 'textarea'];
+                            if (interactiveTags.includes(el.tagName.toLowerCase())) {
+                                score += 30;
+                            }
+
+                            // Penalize generic containers
+                            const containerTags = ['div', 'span', 'section', 'main', 'article'];
+                            if (containerTags.includes(el.tagName.toLowerCase())) {
+                                score -= 20;
                             }
 
                             // Get position for uniqueness
                             const rect = el.getBoundingClientRect();
 
                             matches.push({
-                                selector: selector,
+                                selector: generateSelector(el),
                                 tag: el.tagName.toLowerCase(),
-                                text: textContent.substring(0, 100),
+                                text: fullText.substring(0, 100),
+                                directText: directText.substring(0, 100),
                                 value: value.substring(0, 50),
                                 x: Math.round(rect.x),
-                                y: Math.round(rect.y)
+                                y: Math.round(rect.y),
+                                score: score,
+                                isInteractive: interactiveTags.includes(el.tagName.toLowerCase())
                             });
-
-                            if (matches.length >= limit) break;
                         }
                     }
 
-                    return matches;
+                    // Sort by score (highest first) and return top matches
+                    matches.sort((a, b) => b.score - a.score);
+                    return matches.slice(0, limit);
                 }
             """, [text, limit])
 
