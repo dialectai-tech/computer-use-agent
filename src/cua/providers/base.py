@@ -187,6 +187,79 @@ def compute_page_text_diff(old_text: str, new_text: str, max_lines: int = 50) ->
     return summary
 
 
+def truncate_a11y_tree_for_llm(tree: dict, max_depth: int = 8, max_children: int = 20, max_name_len: int = 100, max_value_len: int = 150) -> dict:
+    """Truncate accessibility tree for LLM consumption while preserving structure.
+
+    This creates a shallow copy of the tree with limits applied. The original tree
+    is kept intact for accurate diff computation. This is purely for token efficiency
+    when sending to the AI.
+
+    Args:
+        tree: Full accessibility tree (not modified)
+        max_depth: Maximum depth to traverse (default: 8)
+        max_children: Maximum children per node (default: 20)
+        max_name_len: Maximum length for element names (default: 100)
+        max_value_len: Maximum length for element values (default: 150)
+
+    Returns:
+        Truncated copy of tree suitable for LLM
+    """
+    # Thresholds for token efficiency
+    # These are conservative to balance context vs completeness
+    # - max_depth=8: Captures most UI structure without deep nesting
+    # - max_children=20: Shows representative sample of repeating elements
+    # - max_name_len=100: Enough for button labels, not entire paragraphs
+    # - max_value_len=150: Enough for input values, not full form data
+
+    def truncate_node(node: dict, depth: int) -> dict:
+        """Recursively truncate a tree node."""
+        if not node or isinstance(node, str):
+            return node
+
+        if depth > max_depth:
+            # Depth limit reached - return placeholder
+            return {"role": "...", "name": f"[Truncated at depth {max_depth}]"}
+
+        # Copy node with truncated strings
+        # Handle potential None values gracefully
+        name = node.get("name", "")
+        value = node.get("value", "")
+        description = node.get("description", "")
+
+        truncated = {
+            "role": node.get("role", ""),
+            "name": name[:max_name_len] if name else "",
+            "value": value[:max_value_len] if value else None,
+            "description": description[:max_name_len] if description else None,
+            "checked": node.get("checked"),
+            "disabled": node.get("disabled"),
+            "expanded": node.get("expanded"),
+        }
+
+        # Remove None/empty values for compactness
+        truncated = {k: v for k, v in truncated.items() if v not in (None, "")}
+
+        # Truncate children
+        if "children" in node and isinstance(node["children"], list):
+            children = node["children"]
+            if len(children) > max_children:
+                # Take first N children + placeholder for remaining
+                truncated["children"] = [truncate_node(child, depth + 1) for child in children[:max_children]]
+                truncated["children"].append({
+                    "role": "...",
+                    "name": f"[{len(children) - max_children} more children not shown]"
+                })
+            else:
+                truncated["children"] = [truncate_node(child, depth + 1) for child in children]
+
+        return truncated
+
+    if not tree:
+        return {}
+
+    return truncate_node(tree, 0)
+
+
 def build_element_map(tree: dict, path: str = "") -> Dict[str, dict]:
     """Recursively build a flat map of elements with stable keys.
 

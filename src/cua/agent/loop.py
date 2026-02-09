@@ -852,8 +852,10 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
 
                                 if should_send_full_tree:
                                     # Send full tree (establish baseline)
+                                    # NOTE: Full tree stored here for accurate diff computation
+                                    # Provider will truncate before sending to AI (token efficiency)
                                     action_a11y_tree = current_a11y_tree
-                                    self.console.print(f"  [dim]📊 A11y: Full tree (baseline)[/dim]")
+                                    self.console.print(f"  [dim]📊 A11y: Full tree (baseline, will be truncated for AI)[/dim]")
                                 elif self.use_semantic_diff:
                                     # Compute semantic diff
                                     action_a11y_diff = compute_a11y_tree_diff(self.last_a11y_tree, current_a11y_tree)

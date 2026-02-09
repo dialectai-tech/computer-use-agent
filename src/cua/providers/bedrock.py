@@ -7,7 +7,7 @@ import os
 import boto3
 import re
 
-from cua.providers.base import ComputerUseProvider, Action, ActionType
+from cua.providers.base import ComputerUseProvider, Action, ActionType, truncate_a11y_tree_for_llm
 from cua.prompts import build_initial_prompt, get_system_prompt, TWO_PHASE_PROMPT_P2
 from cua.tools.dom_tool import DOM_TOOL_DEFINITION
 from cua.tools.context_reset_tool import CONTEXT_RESET_TOOL_DEFINITION
@@ -870,8 +870,16 @@ class BedrockProvider(ComputerUseProvider):
             if action_evidence:
                 if action_evidence.accessibility_tree:
                     # Full tree (baseline or large diff)
-                    # Format tree compactly to reduce tokens
-                    tree_str = self._format_a11y_tree_compact(action_evidence.accessibility_tree)
+                    # IMPORTANT: Truncate tree for LLM (token efficiency)
+                    # but evidence still contains full tree for accurate diffs
+                    truncated_tree = truncate_a11y_tree_for_llm(
+                        action_evidence.accessibility_tree,
+                        max_depth=8,          # Conservative depth limit
+                        max_children=20,      # Show first 20 children per node
+                        max_name_len=100,     # Truncate long labels
+                        max_value_len=150     # Truncate long input values
+                    )
+                    tree_str = self._format_a11y_tree_compact(truncated_tree, max_depth=15)
                     result_content.append({"text": f"\n\n**Accessibility Tree (Baseline):**\n```\n{tree_str}\n```"})
 
                 elif action_evidence.accessibility_tree_diff:
