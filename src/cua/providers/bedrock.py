@@ -421,22 +421,11 @@ class BedrockProvider(ComputerUseProvider):
         # It will be sent via the 'system' parameter to avoid re-sending it every time
         content = [{"text": full_prompt}]
 
-        # Add accessibility tree if available (FIRST - so AI reads it before image)
-        if accessibility_tree and not accessibility_tree.get("error"):
-            import json
-            tree_text = f"\n\n**Accessibility Tree (Page Structure):**\n```json\n{json.dumps(accessibility_tree, indent=2)}\n```\n"
-            content.append({"text": tree_text})
-
-        # Add page text if available (SECOND - full text content)
-        if page_text:
-            # Truncate if too long to avoid token explosion
-            max_text_length = 10000  # ~2500 tokens
-            truncated_text = page_text[:max_text_length]
-            if len(page_text) > max_text_length:
-                truncated_text += f"\n\n[... text truncated, {len(page_text) - max_text_length} more characters ...]"
-
-            text_section = f"\n\n**Page Text (All Visible Text):**\n```\n{truncated_text}\n```\n"
-            content.append({"text": text_section})
+        # NOTE: We do NOT add accessibility tree OR page text to initial request anymore
+        # Both get stale after navigation and confuse the AI
+        # They are now ONLY sent via per-action evidence in tool results:
+        # - A11y tree: sent with first action (baseline) + subsequent actions (diff)
+        # - Page text: sent when URL changes (with diff showing what changed)
 
         if screenshot:
             # Decode base64 screenshot to bytes for Converse API (LAST - visual reference)
