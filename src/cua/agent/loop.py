@@ -13,9 +13,11 @@ from cua.providers.base import (
     ComputerUseProvider,
     ActionType,
     ActionEvidence,
+    AccessibilityTreeDiff,
     requires_screenshot,
     requires_page_text_capture,
-    compute_page_text_diff
+    compute_page_text_diff,
+    compute_a11y_tree_diff
 )
 from cua.browser.playwright_controller import PlaywrightController
 from cua.tools.search_tool import SearchTool
@@ -67,7 +69,8 @@ class ComputerUseAgent:
         auto_context_reset: bool = True,
         auto_reset_token_threshold: int = 30000,
         multi_action_evidence: bool = True,
-        max_actions_per_response: int = 10
+        max_actions_per_response: int = 10,
+        use_semantic_diff: bool = True
     ):
         """Initialize agent.
 
@@ -92,6 +95,7 @@ class ComputerUseAgent:
             auto_reset_token_threshold: Input token threshold for automatic reset
             multi_action_evidence: Capture per-action evidence (screenshots, page text) for multi-action responses
             max_actions_per_response: Maximum number of actions to execute in a single response (0 = unlimited)
+            use_semantic_diff: Use semantic diff for a11y tree instead of full tree after baseline (default: True)
         """
         self.provider = provider
         self.max_message_turns = max_message_turns
@@ -99,6 +103,7 @@ class ComputerUseAgent:
         self.auto_reset_token_threshold = auto_reset_token_threshold
         self.multi_action_evidence = multi_action_evidence
         self.max_actions_per_response = max_actions_per_response
+        self.use_semantic_diff = use_semantic_diff
 
         # Pass max_message_turns to provider if it supports it
         if hasattr(self.provider, 'max_message_turns'):
@@ -681,6 +686,12 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                 last_url = self.browser.get_page_info().get('url', '') if hasattr(self.browser, 'get_page_info') else ''
                 last_page_text = self.browser.get_page_text() if hasattr(self.browser, 'get_page_text') else ''
 
+                # Track a11y tree for semantic diff (across entire session)
+                if not hasattr(self, 'last_a11y_tree'):
+                    self.last_a11y_tree = None
+                if not hasattr(self, 'last_a11y_url'):
+                    self.last_a11y_url = None
+
                 for action in actions:
                     action_desc = self._format_action(action)
                     self.console.print(f"  → {action_desc}")
@@ -824,6 +835,49 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                             # Update last page text for next action
                             last_page_text = action_page_text
 
+                        # Capture a11y tree or compute semantic diff
+                        action_a11y_tree = None
+                        action_a11y_diff = None
+
+                        if self.use_accessibility_tree:
+                            current_a11y_tree = self.browser.get_accessibility_tree() if hasattr(self.browser, 'get_accessibility_tree') else None
+
+                            if current_a11y_tree:
+                                # Determine if we should send full tree or diff
+                                should_send_full_tree = (
+                                    self.last_a11y_tree is None or  # First action (no baseline)
+                                    current_url != self.last_a11y_url or  # Page navigation
+                                    action.type == ActionType.CONTEXT_RESET  # After context reset
+                                )
+
+                                if should_send_full_tree:
+                                    # Send full tree (establish baseline)
+                                    action_a11y_tree = current_a11y_tree
+                                    self.console.print(f"  [dim]📊 A11y: Full tree (baseline)[/dim]")
+                                elif self.use_semantic_diff:
+                                    # Compute semantic diff
+                                    action_a11y_diff = compute_a11y_tree_diff(self.last_a11y_tree, current_a11y_tree)
+
+                                    if action_a11y_diff:
+                                        # Check if diff is too large (>60% changed)
+                                        if action_a11y_diff.is_large_diff:
+                                            # Send full tree instead
+                                            action_a11y_tree = current_a11y_tree
+                                            self.console.print(f"  [dim]📊 A11y: Large diff (>60%), sending full tree[/dim]")
+                                        else:
+                                            # Send diff only
+                                            self.console.print(f"  [dim]🔄 A11y changes: +{action_a11y_diff.total_added} -{action_a11y_diff.total_removed} ~{action_a11y_diff.total_modified}[/dim]")
+                                    else:
+                                        # No changes detected
+                                        self.console.print(f"  [dim]✓ A11y: No changes[/dim]")
+                                else:
+                                    # Semantic diff disabled, always send full tree
+                                    action_a11y_tree = current_a11y_tree
+
+                                # Update tracking for next action
+                                self.last_a11y_tree = current_a11y_tree
+                                self.last_a11y_url = current_url
+
                         # Store evidence for this action
                         evidence = ActionEvidence(
                             action_id=action.id,
@@ -832,6 +886,8 @@ This is attempt {self.no_action_count}/3. If you don't provide actions now, the 
                             screenshot=action_screenshot,
                             page_text=action_page_text,
                             page_text_diff=action_page_text_diff,
+                            accessibility_tree=action_a11y_tree,
+                            accessibility_tree_diff=action_a11y_diff,
                             url=current_url
                         )
                         action_evidence_map[action.id] = evidence

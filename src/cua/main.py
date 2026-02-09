@@ -158,6 +158,11 @@ console = Console()
     default=10,
     help="Maximum number of actions to execute in a single response (default: 10, 0 = unlimited)"
 )
+@click.option(
+    "--use-semantic-diff/--no-use-semantic-diff",
+    default=True,
+    help="Use semantic diff for a11y tree instead of full tree after baseline (default: enabled, requires --use-accessibility-tree)"
+)
 def cli(
     url: str,
     prompt: str,
@@ -184,7 +189,8 @@ def cli(
     auto_context_reset: bool,
     auto_reset_token_threshold: int,
     multi_action_evidence: bool,
-    max_actions_per_response: int
+    max_actions_per_response: int,
+    use_semantic_diff: bool
 ):
     """Computer Use Automation - Multi-provider AI agent for browser automation.
 
@@ -301,7 +307,8 @@ def cli(
         auto_context_reset=auto_context_reset,
         auto_reset_token_threshold=auto_reset_token_threshold,
         multi_action_evidence=multi_action_evidence,
-        max_actions_per_response=max_actions_per_response
+        max_actions_per_response=max_actions_per_response,
+        use_semantic_diff=use_semantic_diff
     )
 
     # Run task

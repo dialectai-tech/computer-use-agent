@@ -866,6 +866,19 @@ class BedrockProvider(ComputerUseProvider):
             if action_evidence and action_evidence.page_text_diff:
                 result_content.append({"text": f"\n{action_evidence.page_text_diff}"})
 
+            # Add accessibility tree or semantic diff
+            if action_evidence:
+                if action_evidence.accessibility_tree:
+                    # Full tree (baseline or large diff)
+                    # Format tree compactly to reduce tokens
+                    tree_str = self._format_a11y_tree_compact(action_evidence.accessibility_tree)
+                    result_content.append({"text": f"\n\n**Accessibility Tree (Baseline):**\n```\n{tree_str}\n```"})
+
+                elif action_evidence.accessibility_tree_diff:
+                    # Semantic diff (incremental update)
+                    diff_summary = action_evidence.accessibility_tree_diff.summary
+                    result_content.append({"text": f"\n{diff_summary}"})
+
             tool_result_content.append({
                 "toolResult": {
                     "toolUseId": tool_id,
@@ -1208,3 +1221,55 @@ class BedrockProvider(ComputerUseProvider):
             "mouse_move": ActionType.MOUSE_MOVE,
         }
         return mapping.get(action_str)
+
+    def _format_a11y_tree_compact(self, tree: dict, indent: int = 0, max_depth: int = 10) -> str:
+        """Format accessibility tree in a compact, LLM-friendly format.
+
+        Args:
+            tree: Accessibility tree node
+            indent: Current indentation level
+            max_depth: Maximum depth to traverse
+
+        Returns:
+            Compact string representation of tree
+        """
+        if not tree or indent > max_depth:
+            return ""
+
+        lines = []
+        indent_str = "  " * indent
+
+        # Format current node
+        role = tree.get("role", "")
+        name = tree.get("name", "")
+        value = tree.get("value", "")
+
+        # Build node description
+        node_desc = f"{indent_str}{role}"
+        if name:
+            node_desc += f" \"{name}\""
+        if value:
+            node_desc += f" = \"{value[:50]}\"" if len(value) > 50 else f" = \"{value}\""
+
+        # Add state info if present
+        states = []
+        if tree.get("disabled"):
+            states.append("disabled")
+        if tree.get("checked") is not None:
+            states.append("checked" if tree.get("checked") else "unchecked")
+        if tree.get("expanded") is not None:
+            states.append("expanded" if tree.get("expanded") else "collapsed")
+
+        if states:
+            node_desc += f" ({', '.join(states)})"
+
+        lines.append(node_desc)
+
+        # Recurse into children
+        if "children" in tree and isinstance(tree["children"], list):
+            for child in tree["children"]:
+                child_str = self._format_a11y_tree_compact(child, indent + 1, max_depth)
+                if child_str:
+                    lines.append(child_str)
+
+        return "\n".join(lines)

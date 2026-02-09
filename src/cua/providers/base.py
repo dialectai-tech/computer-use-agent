@@ -40,6 +40,23 @@ class Action:
 
 
 @dataclass
+class AccessibilityTreeDiff:
+    """Semantic diff of accessibility tree changes between actions.
+
+    Captures what changed in the accessibility tree: elements added, removed,
+    or modified. Much more compact than sending the full tree every time.
+    """
+    added_elements: List[Dict[str, Any]]  # Elements that appeared
+    removed_elements: List[Dict[str, Any]]  # Elements that disappeared
+    modified_elements: List[Dict[str, Any]]  # Elements with state/content changes
+    summary: str  # Human-readable summary for LLM
+    total_added: int = 0
+    total_removed: int = 0
+    total_modified: int = 0
+    is_large_diff: bool = False  # If >60% changed, should send full tree instead
+
+
+@dataclass
 class ActionEvidence:
     """Evidence captured after executing an action.
 
@@ -53,6 +70,8 @@ class ActionEvidence:
     screenshot: Optional[bytes] = None  # Screenshot after action (if visual change)
     page_text: Optional[str] = None  # Page text if URL changed
     page_text_diff: Optional[str] = None  # Diff of page text changes (compact summary of what changed)
+    accessibility_tree: Optional[dict] = None  # Full tree if baseline needed (page load, first action)
+    accessibility_tree_diff: Optional[AccessibilityTreeDiff] = None  # Semantic diff if incremental update
     url: Optional[str] = None  # URL after action
     timestamp: float = None  # When action completed
 
@@ -166,6 +185,246 @@ def compute_page_text_diff(old_text: str, new_text: str, max_lines: int = 50) ->
         summary += f"\n... ({len(significant_lines) - max_lines} more changes not shown)"
 
     return summary
+
+
+def build_element_map(tree: dict, path: str = "") -> Dict[str, dict]:
+    """Recursively build a flat map of elements with stable keys.
+
+    Args:
+        tree: Accessibility tree node
+        path: Current path from root
+
+    Returns:
+        Dict mapping element_key → element_data
+    """
+    elements = {}
+
+    if not tree or isinstance(tree, str):
+        return elements
+
+    # Generate stable key for this element
+    role = tree.get("role", "unknown")
+    name = tree.get("name", "")
+    element_key = f"{role}:{name}:{path}"
+
+    # Store element with key semantic attributes
+    elements[element_key] = {
+        "role": role,
+        "name": name,
+        "value": tree.get("value"),
+        "description": tree.get("description"),
+        "checked": tree.get("checked"),
+        "disabled": tree.get("disabled"),
+        "expanded": tree.get("expanded"),
+        "path": path
+    }
+
+    # Recurse into children
+    if "children" in tree and isinstance(tree["children"], list):
+        for i, child in enumerate(tree["children"]):
+            child_path = f"{path}/{role}[{i}]" if path else f"{role}[{i}]"
+            child_elements = build_element_map(child, child_path)
+            elements.update(child_elements)
+
+    return elements
+
+
+def compare_elements(old: dict, new: dict) -> Optional[Dict[str, tuple]]:
+    """Compare two elements and return what changed.
+
+    Args:
+        old: Old element data
+        new: New element data
+
+    Returns:
+        Dict of changed attributes with (old_value, new_value) tuples,
+        or None if no meaningful changes
+    """
+    changes = {}
+
+    # Compare meaningful attributes
+    attributes_to_check = [
+        "value", "checked", "disabled", "expanded",
+        "name", "description"
+    ]
+
+    for attr in attributes_to_check:
+        old_val = old.get(attr)
+        new_val = new.get(attr)
+
+        if old_val != new_val:
+            changes[attr] = (old_val, new_val)
+
+    return changes if changes else None
+
+
+def generate_a11y_diff_summary(
+    added: List[dict],
+    removed: List[dict],
+    modified: List[dict],
+    max_items: int = 10
+) -> str:
+    """Generate human-readable summary of a11y changes for LLM consumption.
+
+    Args:
+        added: Added elements
+        removed: Removed elements
+        modified: Modified elements
+        max_items: Max items to show per category
+
+    Returns:
+        Formatted summary string
+    """
+    lines = ["🌲 Accessibility Tree Changes:\n"]
+
+    # Added elements
+    if added:
+        lines.append(f"Added ({len(added)}):")
+        for elem in added[:max_items]:
+            role = elem.get("role", "unknown")
+            name = elem.get("name", "")
+            disabled = " (disabled)" if elem.get("disabled") else ""
+            lines.append(f"+ {role} \"{name}\"{disabled}")
+        if len(added) > max_items:
+            lines.append(f"  ... and {len(added) - max_items} more")
+        lines.append("")
+
+    # Removed elements
+    if removed:
+        lines.append(f"Removed ({len(removed)}):")
+        for elem in removed[:max_items]:
+            role = elem.get("role", "unknown")
+            name = elem.get("name", "")
+            lines.append(f"- {role} \"{name}\"")
+        if len(removed) > max_items:
+            lines.append(f"  ... and {len(removed) - max_items} more")
+        lines.append("")
+
+    # Modified elements
+    if modified:
+        lines.append(f"Modified ({len(modified)}):")
+        for item in modified[:max_items]:
+            key = item["key"]
+            changes = item["changes"]
+
+            # Parse key for display
+            parts = key.split(":", 2)
+            role = parts[0] if len(parts) > 0 else "unknown"
+            name = parts[1] if len(parts) > 1 else ""
+
+            # Format changes
+            change_strs = []
+            for attr, (old_val, new_val) in changes.items():
+                # Format values nicely
+                old_str = f"\"{old_val}\"" if old_val else "None"
+                new_str = f"\"{new_val}\"" if new_val else "None"
+                change_strs.append(f"{attr}: {old_str} → {new_str}")
+
+            changes_text = ", ".join(change_strs)
+            lines.append(f"~ {role} \"{name}\": {changes_text}")
+
+        if len(modified) > max_items:
+            lines.append(f"  ... and {len(modified) - max_items} more")
+
+    # If no changes
+    if not added and not removed and not modified:
+        lines.append("(No semantic changes detected)")
+
+    return "\n".join(lines)
+
+
+def compute_a11y_tree_diff(old_tree: dict, new_tree: dict) -> Optional[AccessibilityTreeDiff]:
+    """Compute semantic diff between two accessibility trees.
+
+    Args:
+        old_tree: Previous accessibility tree
+        new_tree: Current accessibility tree
+
+    Returns:
+        AccessibilityTreeDiff with added/removed/modified elements,
+        or None if trees are identical or both empty
+    """
+    if not old_tree and not new_tree:
+        return None
+
+    if old_tree == new_tree:
+        return None
+
+    # Handle case where one tree is empty
+    if not old_tree:
+        new_elements = build_element_map(new_tree)
+        return AccessibilityTreeDiff(
+            added_elements=list(new_elements.values()),
+            removed_elements=[],
+            modified_elements=[],
+            summary=f"🌲 Accessibility Tree: Page loaded with {len(new_elements)} elements",
+            total_added=len(new_elements),
+            total_removed=0,
+            total_modified=0,
+            is_large_diff=False
+        )
+
+    if not new_tree:
+        old_elements = build_element_map(old_tree)
+        return AccessibilityTreeDiff(
+            added_elements=[],
+            removed_elements=list(old_elements.values()),
+            modified_elements=[],
+            summary=f"🌲 Accessibility Tree: {len(old_elements)} elements removed",
+            total_added=0,
+            total_removed=len(old_elements),
+            total_modified=0,
+            is_large_diff=True  # Everything removed = large change
+        )
+
+    # Step 1: Build element maps (key → element)
+    old_elements = build_element_map(old_tree)
+    new_elements = build_element_map(new_tree)
+
+    # Step 2: Find added/removed elements
+    old_keys = set(old_elements.keys())
+    new_keys = set(new_elements.keys())
+
+    added_keys = new_keys - old_keys
+    removed_keys = old_keys - new_keys
+    common_keys = old_keys & new_keys
+
+    added_elements = [new_elements[k] for k in added_keys]
+    removed_elements = [old_elements[k] for k in removed_keys]
+
+    # Step 3: Find modified elements
+    modified_elements = []
+    for key in common_keys:
+        old_elem = old_elements[key]
+        new_elem = new_elements[key]
+
+        changes = compare_elements(old_elem, new_elem)
+        if changes:
+            modified_elements.append({
+                "key": key,
+                "changes": changes,
+                "old": old_elem,
+                "new": new_elem
+            })
+
+    # Step 4: Check if diff is too large (>60% changed)
+    total_elements = len(old_keys | new_keys)
+    changed_elements = len(added_keys) + len(removed_keys) + len(modified_elements)
+    is_large_diff = (changed_elements / total_elements) > 0.6 if total_elements > 0 else False
+
+    # Step 5: Generate human-readable summary
+    summary = generate_a11y_diff_summary(added_elements, removed_elements, modified_elements)
+
+    return AccessibilityTreeDiff(
+        added_elements=added_elements,
+        removed_elements=removed_elements,
+        modified_elements=modified_elements,
+        summary=summary,
+        total_added=len(added_elements),
+        total_removed=len(removed_elements),
+        total_modified=len(modified_elements),
+        is_large_diff=is_large_diff
+    )
 
 
 @dataclass
