@@ -167,6 +167,9 @@ class PlaywrightController:
     def get_accessibility_tree(self, max_depth: int = 10) -> dict:
         """Get accessibility tree of current page.
 
+        Note: Playwright Python doesn't have page.accessibility API.
+        We use JavaScript evaluation to extract accessibility information from DOM.
+
         Args:
             max_depth: Maximum depth to traverse (default: 10)
 
@@ -177,15 +180,84 @@ class PlaywrightController:
             raise RuntimeError("Browser not started. Call start() first.")
 
         try:
-            # Get accessibility snapshot
-            tree = self.page.accessibility.snapshot(
-                interesting_only=True,  # Filter out non-interactive elements
-                root=None  # Start from page root
-            )
+            # Use JavaScript to build accessibility tree from DOM
+            # Extracts ARIA roles, labels, values, and states
+            tree = self.page.evaluate("""
+                (maxDepth) => {
+                    function getAccessibilityInfo(element, depth) {
+                        if (!element || depth > maxDepth) return null;
+
+                        const role = element.getAttribute('role') || getImplicitRole(element);
+                        const name = getAccessibleName(element);
+                        const value = getAccessibleValue(element);
+                        const state = getAccessibleState(element);
+
+                        // Skip if no meaningful a11y info
+                        if (!role && !name && !value && Object.keys(state).length === 0) {
+                            return null;
+                        }
+
+                        const node = { role, name, value, ...state, children: [] };
+
+                        // Process children
+                        if (depth < maxDepth && element.children) {
+                            for (let child of element.children) {
+                                const childNode = getAccessibilityInfo(child, depth + 1);
+                                if (childNode) node.children.push(childNode);
+                            }
+                        }
+
+                        return node;
+                    }
+
+                    function getImplicitRole(el) {
+                        const tag = el.tagName.toLowerCase();
+                        const type = el.getAttribute('type');
+                        const roles = {
+                            'button': 'button',
+                            'a': el.hasAttribute('href') ? 'link' : null,
+                            'input': type === 'checkbox' ? 'checkbox' : type === 'radio' ? 'radio' : 'textbox',
+                            'textarea': 'textbox', 'select': 'combobox', 'img': 'img',
+                            'h1': 'heading', 'h2': 'heading', 'h3': 'heading',
+                            'nav': 'navigation', 'main': 'main', 'form': 'form'
+                        };
+                        return roles[tag] || null;
+                    }
+
+                    function getAccessibleName(el) {
+                        return el.getAttribute('aria-label') ||
+                               el.getAttribute('title') ||
+                               el.getAttribute('alt') ||
+                               el.getAttribute('placeholder') ||
+                               (el.labels?.[0]?.textContent) ||
+                               el.textContent?.trim().substring(0, 100) || '';
+                    }
+
+                    function getAccessibleValue(el) {
+                        const tag = el.tagName.toLowerCase();
+                        if (tag === 'input' || tag === 'textarea') return el.value;
+                        if (tag === 'select') return el.options[el.selectedIndex]?.text || '';
+                        return '';
+                    }
+
+                    function getAccessibleState(el) {
+                        const state = {};
+                        if (el.disabled || el.getAttribute('aria-disabled') === 'true') state.disabled = true;
+                        if (el.type === 'checkbox' || el.type === 'radio') state.checked = el.checked;
+                        if (el.hasAttribute('aria-expanded')) state.expanded = el.getAttribute('aria-expanded') === 'true';
+                        return state;
+                    }
+
+                    return getAccessibilityInfo(document.body, 0);
+                }
+            """, max_depth)
 
             # Simplify tree structure for token efficiency
-            simplified = self._simplify_accessibility_tree(tree, max_depth=max_depth)
-            return simplified
+            if tree:
+                simplified = self._simplify_accessibility_tree(tree, max_depth=max_depth)
+                return simplified
+            else:
+                return {"role": "WebArea", "name": "Page", "children": []}
         except Exception as e:
             # Return empty tree if accessibility snapshot fails
             import traceback
