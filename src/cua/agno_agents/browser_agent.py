@@ -9,7 +9,8 @@ Phase 2: MCP Playwright integration (current)
 from typing import Any, Optional
 from agno.agent import Agent
 from agno.models.aws import AwsBedrock
-from agno.tools.mcp import MCPTools
+
+from cua.utils.bedrock_mcp_tools import create_bedrock_mcp_tools
 
 
 BROWSER_AGENT_INSTRUCTIONS = """
@@ -61,19 +62,20 @@ def create_browser_agent(
     model: AwsBedrock,
     playwright_controller: Optional[Any] = None
 ) -> Agent:
-    """Create Browser Agent with MCP Playwright tools.
+    """Create Browser Agent with Bedrock-compatible MCP Playwright tools.
 
-    Phase 2: Real MCP Playwright integration
+    Phase 2: Real MCP Playwright integration with Bedrock translation layer
 
     Args:
         model: Bedrock model instance (Haiku or Sonnet)
         playwright_controller: PlaywrightController instance (optional, for hybrid mode)
 
     Returns:
-        Configured Browser Agent with MCP tools
+        Configured Browser Agent with Bedrock-compatible MCP tools
     """
-    # Create MCP tools for Playwright
-    playwright_mcp = MCPTools(
+    # Create Bedrock-compatible MCP tools for Playwright
+    # This wrapper translates MCP responses to Bedrock format
+    playwright_mcp = create_bedrock_mcp_tools(
         command="npx @playwright/mcp",
         refresh_connection=True  # Auto-reconnect if crashes
     )
