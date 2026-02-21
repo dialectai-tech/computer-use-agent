@@ -41,7 +41,8 @@
       "Bash(npm install:*)",
       "Bash(npx @playwright/mcp --help)",
       "Bash(npx @modelcontextprotocol/server-memory:*)",
-      "Bash(tee:*)"
+      "Bash(tee:*)",
+      "Bash(echo:*)"
     ]
   }
 }

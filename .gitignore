@@ -9,3 +9,11 @@ __pycache__/
 recordings/**
 screenshots/**
 tmp/**
+
+# Test artifacts and runs
+test_artifacts/**
+test_runs/**
+logs/**
+
+# Pytest cache
+.pytest_cache/
