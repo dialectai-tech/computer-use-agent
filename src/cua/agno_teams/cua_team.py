@@ -53,6 +53,7 @@ def create_cua_team(
         name="CUA Team",
         members=[orchestrator, browser_agent, memory_agent, analysis_agent],
         mode="coordinate",  # Orchestrator coordinates, delegates, and synthesizes
+        model=orchestrator_model,  # Use Bedrock model for team
         markdown=True
     )
 
