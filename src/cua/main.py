@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from rich.console import Console
 
 from cua.coordinator.agent import CoordinatorAgent
+from cua.coordinator.agno_coordinator import AgnoCoordinator
 from cua.providers.bedrock import BedrockProvider
 
 # Load environment variables
@@ -98,6 +99,29 @@ console = Console()
     default=True,
     help="Use accessibility tree alongside screenshots for better web automation (default: enabled)"
 )
+@click.option(
+    "--use-agno/--no-agno",
+    default=False,
+    help="Use Agno multi-agent architecture (Phase 1: experimental) (default: disabled)"
+)
+@click.option(
+    "--orchestrator-model",
+    type=click.Choice(["haiku", "sonnet"], case_sensitive=False),
+    default=None,
+    help="Model for orchestrator agent (optional, defaults to --model)"
+)
+@click.option(
+    "--agent-model",
+    type=click.Choice(["haiku", "sonnet"], case_sensitive=False),
+    default=None,
+    help="Model for sub-agents (optional, defaults to --model)"
+)
+@click.option(
+    "--log-level",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
+    default="INFO",
+    help="Logging level for structured logs (default: INFO)"
+)
 def cli(
     url: str,
     prompt: str,
@@ -113,21 +137,30 @@ def cli(
     context_window_size: int,
     extended_thinking: bool,
     thinking_budget: int,
-    use_accessibility_tree: bool
+    use_accessibility_tree: bool,
+    use_agno: bool,
+    orchestrator_model: str,
+    agent_model: str,
+    log_level: str
 ):
     """Computer Use Automation - Simplified MCP Multi-Agent Architecture.
 
-    This tool uses a CoordinatorAgent to orchestrate Claude AI (Haiku or Sonnet via AWS Bedrock)
-    for autonomous web automation with:
-    - Critical facts tracking for better context management
-    - Direct Playwright integration (MCP support coming)
-    - Simplified architecture: no workers upfront, expand when needed
+    This tool supports two modes:
+
+    1. **Classic Mode** (default): CoordinatorAgent with facts tracking
+    2. **Agno Mode** (--use-agno): Multi-agent architecture with token optimization
 
     Example usage:
 
+        # Classic mode
         cua --url "https://example.com" --prompt "Fill out the contact form"
 
-        cua --model sonnet --url "https://example.com" --prompt "Complete complex task"
+        # Agno multi-agent mode (Phase 1: experimental)
+        cua --use-agno --url "https://example.com" --prompt "Complete task"
+
+        # Agno with custom models
+        cua --use-agno --orchestrator-model sonnet --agent-model haiku \
+            --url "https://example.com" --prompt "Complex task"
     """
     # Display header
     console.print("\n[bold cyan]╔═══════════════════════════════════════╗[/bold cyan]")
@@ -172,22 +205,46 @@ def cli(
         url = "https://" + url
         console.print(f"[dim]Adding https:// to URL: {url}[/dim]\n")
 
-    # Initialize coordinator agent
-    agent = CoordinatorAgent(
-        provider=ai_provider,
-        display_width=display_width,
-        display_height=display_height,
-        zoom=zoom,
-        headless=headless,
-        record_video=record_video,
-        video_dir=video_dir,
-        enable_caching=enable_caching,
-        context_window_size=context_window_size,
-        extended_thinking=extended_thinking,
-        thinking_budget=thinking_budget,
-        use_accessibility_tree=use_accessibility_tree,
-        track_facts=True  # Enable critical facts tracking
-    )
+    # Initialize coordinator agent (choose mode)
+    if use_agno:
+        # Use Agno multi-agent architecture
+        console.print("[dim]Mode: Agno Multi-Agent (Phase 1: Foundation)[/dim]")
+        agent = AgnoCoordinator(
+            provider=ai_provider,
+            model=model,
+            orchestrator_model=orchestrator_model,
+            agent_model=agent_model,
+            log_level=log_level.upper(),
+            display_width=display_width,
+            display_height=display_height,
+            zoom=zoom,
+            headless=headless,
+            record_video=record_video,
+            video_dir=video_dir,
+            enable_caching=enable_caching,
+            context_window_size=context_window_size,
+            extended_thinking=extended_thinking,
+            thinking_budget=thinking_budget,
+            use_accessibility_tree=use_accessibility_tree,
+        )
+    else:
+        # Use classic coordinator
+        console.print("[dim]Mode: Classic Coordinator with Facts Tracking[/dim]")
+        agent = CoordinatorAgent(
+            provider=ai_provider,
+            display_width=display_width,
+            display_height=display_height,
+            zoom=zoom,
+            headless=headless,
+            record_video=record_video,
+            video_dir=video_dir,
+            enable_caching=enable_caching,
+            context_window_size=context_window_size,
+            extended_thinking=extended_thinking,
+            thinking_budget=thinking_budget,
+            use_accessibility_tree=use_accessibility_tree,
+            track_facts=True  # Enable critical facts tracking
+        )
 
     # Run task
     result = agent.run_task(
