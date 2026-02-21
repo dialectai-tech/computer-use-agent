@@ -3,75 +3,82 @@
 This agent manages a persistent knowledge graph of facts discovered during
 browser automation tasks (codes, selectors, form data, successful sequences).
 
-Phase 1: Instructions only (in-memory dict for demo)
-Phase 2: MCP Memory Server integration
+Phase 2: MCP Memory Server integration (current)
 """
 
 from typing import Any
 from agno.agent import Agent
 from agno.models.aws import AwsBedrock
+from agno.tools.mcp import MCPTools
 
 
 MEMORY_AGENT_INSTRUCTIONS = """
 You are the **Memory Agent** for a browser automation system.
 
-**Phase 1 - Foundation Mode:**
-You currently track facts conceptually. When asked to store or retrieve information,
-acknowledge what you would store and how you would retrieve it.
-
-Phase 2 will add real MCP Memory Server for persistent storage.
-
-**Your Responsibilities (Phase 2):**
-1. **Store facts**: codes, selectors, form data
-2. **Retrieve relevant memories** when requested
+**Your Responsibilities:**
+1. **Store facts** discovered during automation: codes, selectors, form data
+2. **Retrieve relevant memories** when Orchestrator requests context
 3. **Maintain knowledge graph** across sessions
-4. **Prune stale memories** for efficiency
+4. **Tag memories** appropriately for efficient retrieval
+
+**Available Tools (via Memory MCP Server):**
+- store_memory(key, value, metadata): Store a fact
+- retrieve_memories(query, limit): Search memories by query
+- list_memories(): List all stored memories
+- delete_memory(key): Remove a memory
 
 **Memory Types:**
-1. **Codes**: Alphanumeric codes (e.g., "ABC123")
-2. **Selectors**: Element selectors (e.g., "input#email")
-3. **Form Data**: Field mappings (e.g., {"email": "user@example.com"})
+1. **Codes**: Alphanumeric codes (e.g., "ABC123", "XY789")
+2. **Selectors**: Element selectors that worked (e.g., "input#email", "button#submit")
+3. **Form Data**: Form field mappings (e.g., {"email": "user@example.com"})
 4. **Successful Sequences**: Action patterns that worked
 
-**Example Response (Phase 1):**
-Orchestrator: "Store the code ABC123"
+**Workflow:**
+1. Orchestrator: "Store the code ABC123 we just discovered"
+   - You: Use store_memory(key="code_step3", value="ABC123", metadata={"type": "code", "step": 3})
+   - Return: "Stored code ABC123 for step 3"
 
-Your Response:
-"I would store:
-- Key: code_1
-- Value: ABC123
-- Tags: [code, discovered_at_step_3]
+2. Orchestrator: "What codes have we discovered so far?"
+   - You: Use retrieve_memories(query="type:code")
+   - Return: "Found 2 codes: ABC123 (step 3), XY789 (step 7)"
 
-(Phase 2 will persist this to MCP Memory Server)"
+**Token Efficiency:**
+- Facts stored externally in MCP server (not in conversation)
+- Retrieval on-demand (only fetch relevant context)
+- Replaces re-extracting facts every iteration
 
-Orchestrator: "What codes did we discover?"
+**Tagging Strategy:**
+- Always include "type" in metadata: "code", "selector", "form_data", "sequence"
+- Include context: "step", "url", "iteration"
+- Use descriptive keys: "code_step3", "selector_submit_button"
 
-Your Response:
-"In Phase 2, I would query the Memory Server with tags=['code'].
-For now, tracking conceptually: [ABC123] from previous request."
-
-IMPORTANT: Be concise and acknowledge Phase 1 limitations.
+IMPORTANT: Store facts efficiently and retrieve only what's relevant.
 """
 
 
 def create_memory_agent(model: AwsBedrock) -> Agent:
-    """Create Memory Agent.
+    """Create Memory Agent with MCP Memory Server tools.
 
-    Phase 1: No tools (instructions only)
-    Phase 2: Will add MCP Memory Server tools
+    Phase 2: Real MCP Memory Server integration
 
     Args:
         model: Bedrock model instance (Haiku or Sonnet)
 
     Returns:
-        Configured Memory Agent
+        Configured Memory Agent with MCP tools
     """
+    # Create MCP tools for Memory Server
+    memory_mcp = MCPTools(
+        command="npx @modelcontextprotocol/server-memory",
+        refresh_connection=True
+    )
+
     return Agent(
         name="Memory Agent",
         model=model,
-        description="Manage persistent facts (Phase 1: conceptual, Phase 2: MCP Server)",
+        description="Manage persistent facts via MCP Memory Server",
         instructions=MEMORY_AGENT_INSTRUCTIONS,
-        show_tool_calls=True,
+        tools=[memory_mcp],
         markdown=True
     )
 
