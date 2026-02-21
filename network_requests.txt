@@ -1,3 +1,0 @@
-[GET] https://serene-frangipane-7fd25b.netlify.app/ => [200] 
-[GET] https://serene-frangipane-7fd25b.netlify.app/assets/index-BKEDqiCY.js => [200] 
-[GET] https://serene-frangipane-7fd25b.netlify.app/assets/index-Ck9ja26l.css => [200] 
