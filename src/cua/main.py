@@ -6,7 +6,7 @@ import click
 from dotenv import load_dotenv
 from rich.console import Console
 
-from cua.agent.loop import ComputerUseAgent
+from cua.coordinator.agent import CoordinatorAgent
 from cua.providers.bedrock import BedrockProvider
 
 # Load environment variables
@@ -115,10 +115,13 @@ def cli(
     thinking_budget: int,
     use_accessibility_tree: bool
 ):
-    """Computer Use Automation - Claude AI agent via AWS Bedrock for browser automation.
+    """Computer Use Automation - Simplified MCP Multi-Agent Architecture.
 
-    This tool enables Claude AI (Haiku or Sonnet) to autonomously complete web-based tasks
-    through browser automation using AWS Bedrock.
+    This tool uses a CoordinatorAgent to orchestrate Claude AI (Haiku or Sonnet via AWS Bedrock)
+    for autonomous web automation with:
+    - Critical facts tracking for better context management
+    - Direct Playwright integration (MCP support coming)
+    - Simplified architecture: no workers upfront, expand when needed
 
     Example usage:
 
@@ -169,8 +172,8 @@ def cli(
         url = "https://" + url
         console.print(f"[dim]Adding https:// to URL: {url}[/dim]\n")
 
-    # Initialize agent
-    agent = ComputerUseAgent(
+    # Initialize coordinator agent
+    agent = CoordinatorAgent(
         provider=ai_provider,
         display_width=display_width,
         display_height=display_height,
@@ -182,7 +185,8 @@ def cli(
         context_window_size=context_window_size,
         extended_thinking=extended_thinking,
         thinking_budget=thinking_budget,
-        use_accessibility_tree=use_accessibility_tree
+        use_accessibility_tree=use_accessibility_tree,
+        track_facts=True  # Enable critical facts tracking
     )
 
     # Run task
