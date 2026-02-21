@@ -72,7 +72,7 @@ def create_orchestrator_agent(model: AwsBedrock) -> Agent:
         model=model,
         description="Task coordinator that decomposes goals and delegates to specialists",
         instructions=ORCHESTRATOR_INSTRUCTIONS,
-        show_tool_calls=True,
+        
         markdown=True
     )
 

@@ -51,9 +51,8 @@ def create_cua_team(
     # Orchestrator will decompose tasks and delegate to specialists
     team = Team(
         name="CUA Team",
-        agents=[orchestrator, browser_agent, memory_agent, analysis_agent],
+        members=[orchestrator, browser_agent, memory_agent, analysis_agent],
         mode="coordinate",  # Orchestrator coordinates, delegates, and synthesizes
-        show_progress=True,
         markdown=True
     )
 
