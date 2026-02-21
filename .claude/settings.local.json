@@ -26,7 +26,9 @@
       "WebFetch(domain:docs.anthropic.com)",
       "WebFetch(domain:arxiv.org)",
       "Bash(./tmp/test_bedrock_response.py << 'EOF'\n# Simulate what Bedrock might be returning\nimport json\n\n# Expected format based on Anthropic docs\nexpected = {\n    \"action\": \"left_click\",\n    \"coordinate\": [640, 480]\n}\n\n# What we're probably getting\nactual = {\n    \"action\": \"click\"\n    # No coordinate field!\n}\n\nprint\\(\"Expected:\", json.dumps\\(expected, indent=2\\)\\)\nprint\\(\"\\\\nActual:\", json.dumps\\(actual, indent=2\\)\\)\nprint\\(\"\\\\nCoordinate in expected:\", \"coordinate\" in expected\\)\nprint\\(\"Coordinate in actual:\", \"coordinate\" in actual\\)\nEOF)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

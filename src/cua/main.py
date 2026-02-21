@@ -7,8 +7,6 @@ from dotenv import load_dotenv
 from rich.console import Console
 
 from cua.agent.loop import ComputerUseAgent
-from cua.providers.claude import ClaudeProvider
-from cua.providers.openai import OpenAIProvider
 from cua.providers.bedrock import BedrockProvider
 
 # Load environment variables
@@ -29,15 +27,10 @@ console = Console()
     help="Task description/prompt"
 )
 @click.option(
-    "--provider",
-    type=click.Choice(["claude", "openai", "bedrock"], case_sensitive=False),
-    default=lambda: os.getenv("PROVIDER", "claude"),
-    help="AI provider to use (default: from .env or claude)"
-)
-@click.option(
     "--model",
-    default=None,
-    help="Model to use (default: provider-specific default)"
+    type=click.Choice(["haiku", "sonnet"], case_sensitive=False),
+    default=lambda: os.getenv("BEDROCK_MODEL", "haiku"),
+    help="Claude model to use via Bedrock: haiku (faster/cheaper) or sonnet (smarter) (default: haiku)"
 )
 @click.option(
     "--max-iterations",
@@ -108,7 +101,6 @@ console = Console()
 def cli(
     url: str,
     prompt: str,
-    provider: str,
     model: str,
     max_iterations: int,
     display_width: int,
@@ -123,79 +115,53 @@ def cli(
     thinking_budget: int,
     use_accessibility_tree: bool
 ):
-    """Computer Use Automation - Multi-provider AI agent for browser automation.
+    """Computer Use Automation - Claude AI agent via AWS Bedrock for browser automation.
 
-    This tool enables AI agents to autonomously complete web-based tasks through
-    browser automation. It supports both Anthropic Claude and OpenAI models.
+    This tool enables Claude AI (Haiku or Sonnet) to autonomously complete web-based tasks
+    through browser automation using AWS Bedrock.
 
     Example usage:
 
         cua --url "https://example.com" --prompt "Fill out the contact form"
 
-        cua --provider openai --url "https://forms.gle/xyz" --prompt "Complete survey"
+        cua --model sonnet --url "https://example.com" --prompt "Complete complex task"
     """
     # Display header
     console.print("\n[bold cyan]╔═══════════════════════════════════════╗[/bold cyan]")
     console.print("[bold cyan]║  Computer Use Automation (CUA)        ║[/bold cyan]")
     console.print("[bold cyan]╚═══════════════════════════════════════╝[/bold cyan]\n")
 
-    # Initialize provider
+    # Map model shorthand to Bedrock model ID
+    model_map = {
+        "haiku": "claude-3-5-haiku-20241022-v1:0",
+        "sonnet": "claude-sonnet-4-5"
+    }
+    bedrock_model = model_map.get(model.lower(), model)
+    region = os.getenv("AWS_REGION", "us-east-1")
+
+    # Check if any AWS credentials are configured
+    has_credentials = (
+        os.getenv("AWS_ACCESS_KEY_ID") or
+        os.getenv("AWS_BEARER_TOKEN_BEDROCK") or
+        os.getenv("AWS_SESSION_TOKEN")
+    )
+
+    if not has_credentials:
+        console.print("[bold yellow]Warning: No AWS credentials found in environment[/bold yellow]")
+        console.print("Bedrock will attempt to use IAM role or ~/.aws/credentials")
+        console.print("\nTo authenticate, set one of:")
+        console.print("  - AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY")
+        console.print("  - AWS_BEARER_TOKEN_BEDROCK (mapped to AWS_SESSION_TOKEN)")
+        console.print("  - Use IAM role (if running on AWS EC2/ECS)")
+        console.print()
+
+    # Initialize Bedrock provider
     try:
-        if provider.lower() == "claude":
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-            if not api_key:
-                console.print("[bold red]Error: ANTHROPIC_API_KEY not found in environment[/bold red]")
-                console.print("Please set it in your .env file or environment variables")
-                sys.exit(1)
-
-            model = model or os.getenv("DEFAULT_MODEL", "claude-sonnet-4-5")
-            ai_provider = ClaudeProvider(api_key=api_key, model=model)
-
-        elif provider.lower() == "openai":
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                console.print("[bold red]Error: OPENAI_API_KEY not found in environment[/bold red]")
-                console.print("Please set it in your .env file or environment variables")
-                sys.exit(1)
-
-            model = model or "computer-use-preview"
-            ai_provider = OpenAIProvider(api_key=api_key, model=model)
-
-        elif provider.lower() == "bedrock":
-            # Bedrock uses AWS credential chain
-            # Priority: AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY > AWS_BEARER_TOKEN_BEDROCK > IAM Role
-            model = model or os.getenv("BEDROCK_MODEL", "claude-sonnet-4-5")
-            region = os.getenv("AWS_REGION", "us-east-1")
-
-            # Check if any AWS credentials are configured
-            has_credentials = (
-                os.getenv("AWS_ACCESS_KEY_ID") or
-                os.getenv("AWS_BEARER_TOKEN_BEDROCK") or
-                os.getenv("AWS_SESSION_TOKEN")
-            )
-
-            if not has_credentials:
-                console.print("[bold yellow]Warning: No AWS credentials found in environment[/bold yellow]")
-                console.print("Bedrock will attempt to use IAM role or ~/.aws/credentials")
-                console.print("\nTo authenticate, set one of:")
-                console.print("  - AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY")
-                console.print("  - AWS_BEARER_TOKEN_BEDROCK (mapped to AWS_SESSION_TOKEN)")
-                console.print("  - Use IAM role (if running on AWS EC2/ECS)")
-                console.print()
-
-            try:
-                ai_provider = BedrockProvider(model=model, region=region)
-            except Exception as e:
-                console.print(f"[bold red]Error initializing Bedrock provider: {str(e)}[/bold red]")
-                console.print("\nPlease ensure you have valid AWS credentials configured.")
-                sys.exit(1)
-
-        else:
-            console.print(f"[bold red]Error: Unknown provider '{provider}'[/bold red]")
-            sys.exit(1)
-
+        ai_provider = BedrockProvider(model=bedrock_model, region=region)
+        console.print(f"[dim]Using AWS Bedrock with model: {model} ({bedrock_model})[/dim]")
     except Exception as e:
-        console.print(f"[bold red]Error initializing provider: {str(e)}[/bold red]")
+        console.print(f"[bold red]Error initializing Bedrock provider: {str(e)}[/bold red]")
+        console.print("\nPlease ensure you have valid AWS credentials configured.")
         sys.exit(1)
 
     # Ensure URL has protocol

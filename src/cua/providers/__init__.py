@@ -1,13 +1,11 @@
-"""Provider implementations for different AI services."""
+"""Provider implementations for AWS Bedrock (Claude Haiku/Sonnet)."""
 
 from cua.providers.base import ComputerUseProvider, Action, ActionType
-from cua.providers.claude import ClaudeProvider
-from cua.providers.openai import OpenAIProvider
+from cua.providers.bedrock import BedrockProvider
 
 __all__ = [
     "ComputerUseProvider",
     "Action",
     "ActionType",
-    "ClaudeProvider",
-    "OpenAIProvider",
+    "BedrockProvider",
 ]
