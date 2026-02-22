@@ -11,6 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from cua.utils.session_paths import get_logs_dir, get_session_dir
+
 
 class StructuredLogger:
     """JSON-structured logging for background execution."""
@@ -25,12 +27,12 @@ class StructuredLogger:
         self.session_id = session_id
         self.log_level = log_level
 
-        # Create session directory
-        self.session_dir = Path(f"logs/sessions/{session_id}")
-        self.session_dir.mkdir(parents=True, exist_ok=True)
+        # Create session directory under test_artifacts
+        self.session_dir = get_session_dir(session_id)
+        self.logs_dir = get_logs_dir(session_id)
 
         # Setup log file
-        self.log_file = self.session_dir / "session.log"
+        self.log_file = self.logs_dir / "session.log"
         self.setup_logger()
 
     def setup_logger(self):

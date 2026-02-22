@@ -64,13 +64,13 @@ console = Console()
 )
 @click.option(
     "--record-video/--no-record-video",
-    default=False,
-    help="Record video of the browser session (default: False)"
+    default=True,
+    help="Record video of the browser session (default: True)"
 )
 @click.option(
     "--video-dir",
-    default="./recordings",
-    help="Directory to save video recordings (default: ./recordings)"
+    default=None,
+    help="Directory to save video recordings (default: test_artifacts/{session_id}/recordings)"
 )
 @click.option(
     "--enable-caching/--disable-caching",

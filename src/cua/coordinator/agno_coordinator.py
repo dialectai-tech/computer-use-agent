@@ -17,6 +17,9 @@ from cua.agno_teams.cua_team import create_cua_team
 from cua.utils.token_tracker import TokenTracker
 from cua.utils.structured_logger import StructuredLogger
 from cua.utils.mcp_manager import MCPManager
+from cua.utils.session_paths import (
+    get_session_id, get_recordings_dir, get_screenshots_dir, get_snapshots_dir
+)
 
 
 class AgnoCoordinator:
@@ -63,7 +66,19 @@ class AgnoCoordinator:
         self.console = Console()
 
         # Create session ID for logging
-        self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.session_id = get_session_id()
+
+        # Setup session directories
+        self.recordings_dir = get_recordings_dir(self.session_id)
+        self.screenshots_dir = get_screenshots_dir(self.session_id)
+        self.snapshots_dir = get_snapshots_dir(self.session_id)
+
+        # Override video_dir if not provided or if using default
+        if video_dir is None or video_dir == "./recordings":
+            video_dir = str(self.recordings_dir)
+
+        self.video_dir = video_dir
+        self.record_video = record_video
 
         # Setup structured logging
         self.logger = StructuredLogger(self.session_id, log_level)
@@ -91,6 +106,14 @@ class AgnoCoordinator:
             f"Initialized Agno Coordinator (Phase 2: MCP Integration) with "
             f"orchestrator={orchestrator_model_name}, agents={agent_model_name}"
         )
+
+        # Log session paths
+        self.console.print(f"[dim]Session ID: {self.session_id}[/dim]")
+        self.console.print(f"[dim]Outputs: test_artifacts/{self.session_id}/[/dim]")
+        if self.record_video:
+            self.console.print(f"[dim]Recording: enabled → {self.recordings_dir}[/dim]")
+        else:
+            self.console.print(f"[dim]Recording: disabled[/dim]")
 
     def run_task(
         self,

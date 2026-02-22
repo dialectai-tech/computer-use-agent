@@ -42,7 +42,8 @@
       "Bash(npx @playwright/mcp --help)",
       "Bash(npx @modelcontextprotocol/server-memory:*)",
       "Bash(tee:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(cat:*)"
     ]
   }
 }

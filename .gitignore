@@ -10,8 +10,9 @@ recordings/**
 screenshots/**
 tmp/**
 
-# Test artifacts and runs
+# Test artifacts and runs (keep README)
 test_artifacts/**
+!test_artifacts/README.md
 test_runs/**
 logs/**
 
