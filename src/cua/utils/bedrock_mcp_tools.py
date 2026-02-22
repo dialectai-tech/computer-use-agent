@@ -76,15 +76,21 @@ class BedrockMCPTools(Toolkit):
         Returns:
             List of Function objects representing MCP tools
         """
+        self.logger.debug("BedrockMCPTools.get_tools() called")
+
         # Get tools from underlying MCPTools
+        self.logger.debug("Getting tools from underlying MCPTools...")
         mcp_tool_functions = self.mcp_tools.get_tools()
+        self.logger.debug(f"Got {len(mcp_tool_functions)} tools from MCPTools")
 
         # Wrap each tool function to apply translation
         wrapped_functions = []
-        for tool_func in mcp_tool_functions:
+        for i, tool_func in enumerate(mcp_tool_functions):
+            self.logger.debug(f"Wrapping tool {i+1}/{len(mcp_tool_functions)}: {tool_func.name}")
             wrapped_func = self._wrap_tool_function(tool_func)
             wrapped_functions.append(wrapped_func)
 
+        self.logger.debug(f"Returning {len(wrapped_functions)} wrapped tools")
         return wrapped_functions
 
     def _wrap_tool_function(self, original_func: Function) -> Function:

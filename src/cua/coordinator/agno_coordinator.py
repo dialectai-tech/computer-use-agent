@@ -16,7 +16,6 @@ from cua.agno_config.models import get_bedrock_model
 from cua.agno_teams.cua_team import create_cua_team
 from cua.utils.token_tracker import TokenTracker
 from cua.utils.structured_logger import StructuredLogger
-from cua.utils.mcp_manager import MCPManager
 from cua.utils.session_paths import (
     get_session_id, get_recordings_dir, get_screenshots_dir, get_snapshots_dir
 )
@@ -85,9 +84,6 @@ class AgnoCoordinator:
 
         # Token tracking
         self.token_tracker = TokenTracker()
-
-        # MCP Manager for server lifecycle
-        self.mcp_manager = MCPManager()
 
         # Get Bedrock models
         orchestrator_model_name = orchestrator_model or model
@@ -168,98 +164,91 @@ Work step-by-step to complete the task.
         import time
         start_time = time.time()
 
-        # Use MCP manager as context manager
-        async with self.mcp_manager as mcp:
-            try:
-                # Check MCP server health
-                health = mcp.health_check()
-                self.logger.log_info(f"MCP Server Health: {health}")
+        try:
+            # Create Agno team with MCP-enabled agents
+            # Note: MCPTools in agents will handle MCP server lifecycle automatically
+            self.console.print("\n[cyan]Creating Agno Team...[/cyan]")
+            team = create_cua_team(
+                orchestrator_model=self.config["orchestrator_model"],
+                agent_model=self.config["agent_model"],
+                playwright_controller=None  # Phase 2: MCP handles browser
+            )
 
-                if not all(health.values()):
-                    self.logger.log_warning("Some MCP servers are not healthy")
+            # Log task start
+            self.logger.log_agent_action(
+                agent_name="AgnoCoordinator",
+                action="task_start",
+                details={
+                    "prompt": prompt,
+                    "max_iterations": max_iterations
+                }
+            )
 
-                # Create Agno team with MCP-enabled agents
-                team = create_cua_team(
-                    orchestrator_model=self.config["orchestrator_model"],
-                    agent_model=self.config["agent_model"],
-                    playwright_controller=None  # Phase 2: MCP handles browser
-                )
+            # Run Agno team
+            # MCPTools will start MCP servers on first use
+            self.console.print("\n[cyan]Running Agno Team...[/cyan]")
+            team_result = await team.arun(prompt)
 
-                # Log task start
-                self.logger.log_agent_action(
-                    agent_name="AgnoCoordinator",
-                    action="task_start",
-                    details={
-                        "prompt": prompt,
-                        "max_iterations": max_iterations,
-                        "mcp_health": health
-                    }
-                )
+            # Extract result
+            result_text = team_result if isinstance(team_result, str) else str(team_result)
 
-                # Run Agno team
-                self.console.print("\n[cyan]Running Agno Team with MCP servers...[/cyan]")
-                team_result = await team.arun(prompt)
+            # Calculate stats
+            total_time = time.time() - start_time
+            total_tokens = self.token_tracker.get_total_tokens()
 
-                # Extract result
-                result_text = team_result if isinstance(team_result, str) else str(team_result)
+            # Log completion
+            self.logger.log_agent_action(
+                agent_name="AgnoCoordinator",
+                action="task_complete",
+                details={
+                    "total_time": total_time,
+                    "total_tokens": total_tokens,
+                    "result_length": len(result_text)
+                }
+            )
 
-                # Calculate stats
-                total_time = time.time() - start_time
-                total_tokens = self.token_tracker.get_total_tokens()
+            # Build TaskResult
+            result = TaskResult(
+                success=True,
+                iterations=1,  # Phase 2: Single team execution
+                total_time=total_time,
+                final_url=None,  # TODO: Extract from browser agent
+                video_path=None,  # TODO: Phase 3 will support video
+                error=None,
+                stats={
+                    "api_calls": sum(
+                        agent.api_calls
+                        for agent in self.token_tracker.agent_tokens.values()
+                    ),
+                    "input_tokens": sum(
+                        agent.input_tokens
+                        for agent in self.token_tracker.agent_tokens.values()
+                    ),
+                    "output_tokens": sum(
+                        agent.output_tokens
+                        for agent in self.token_tracker.agent_tokens.values()
+                    ),
+                    "total_tokens": total_tokens,
+                    "screenshots_taken": 0,  # TODO: Track from browser agent
+                    "actions_executed": 0,  # TODO: Track from browser agent
+                    "avg_api_time": total_time,
+                }
+            )
 
-                # Log completion
-                self.logger.log_agent_action(
-                    agent_name="AgnoCoordinator",
-                    action="task_complete",
-                    details={
-                        "total_time": total_time,
-                        "total_tokens": total_tokens,
-                        "result_length": len(result_text)
-                    }
-                )
+            return result
 
-                # Build TaskResult
-                result = TaskResult(
-                    success=True,
-                    iterations=1,  # Phase 2: Single team execution
-                    total_time=total_time,
-                    final_url=None,  # TODO: Extract from browser agent
-                    video_path=None,  # TODO: Phase 3 will support video
-                    error=None,
-                    stats={
-                        "api_calls": sum(
-                            agent.api_calls
-                            for agent in self.token_tracker.agent_tokens.values()
-                        ),
-                        "input_tokens": sum(
-                            agent.input_tokens
-                            for agent in self.token_tracker.agent_tokens.values()
-                        ),
-                        "output_tokens": sum(
-                            agent.output_tokens
-                            for agent in self.token_tracker.agent_tokens.values()
-                        ),
-                        "total_tokens": total_tokens,
-                        "screenshots_taken": 0,  # TODO: Track from browser agent
-                        "actions_executed": 0,  # TODO: Track from browser agent
-                        "avg_api_time": total_time,
-                    }
-                )
+        except Exception as e:
+            self.logger.log_error(f"Task failed", e)
 
-                return result
-
-            except Exception as e:
-                self.logger.log_error(f"Task failed", e)
-
-                return TaskResult(
-                    success=False,
-                    iterations=0,
-                    total_time=time.time() - start_time,
-                    final_url=None,
-                    video_path=None,
-                    error=str(e),
-                    stats={}
-                )
+            return TaskResult(
+                success=False,
+                iterations=0,
+                total_time=time.time() - start_time,
+                final_url=None,
+                video_path=None,
+                error=str(e),
+                stats={}
+            )
 
 
 __all__ = ["AgnoCoordinator"]
