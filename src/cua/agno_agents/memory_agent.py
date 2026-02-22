@@ -9,8 +9,7 @@ Phase 2: MCP Memory Server integration (current)
 from typing import Any
 from agno.agent import Agent
 from agno.models.aws import AwsBedrock
-
-from cua.utils.bedrock_mcp_tools import create_bedrock_mcp_tools
+from agno.tools.mcp import MCPTools
 
 
 MEMORY_AGENT_INSTRUCTIONS = """
@@ -58,19 +57,18 @@ IMPORTANT: Store facts efficiently and retrieve only what's relevant.
 
 
 def create_memory_agent(model: AwsBedrock) -> Agent:
-    """Create Memory Agent with Bedrock-compatible MCP Memory Server tools.
+    """Create Memory Agent with native MCP Memory Server tools.
 
-    Phase 2: Real MCP Memory Server integration with Bedrock translation layer
+    Phase 2: Real MCP Memory Server integration (native MCPTools)
 
     Args:
         model: Bedrock model instance (Haiku or Sonnet)
 
     Returns:
-        Configured Memory Agent with Bedrock-compatible MCP tools
+        Configured Memory Agent with native MCP tools
     """
-    # Create Bedrock-compatible MCP tools for Memory Server
-    # This wrapper translates MCP responses to Bedrock format
-    memory_mcp = create_bedrock_mcp_tools(
+    # Use native MCPTools - Agno handles initialization automatically
+    memory_mcp = MCPTools(
         command="npx @modelcontextprotocol/server-memory",
         refresh_connection=True
     )

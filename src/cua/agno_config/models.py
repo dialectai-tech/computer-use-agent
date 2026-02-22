@@ -7,7 +7,7 @@ Follows the plan directive: HAIKU ONLY by default, user controls testing.
 import os
 from typing import Literal
 
-from agno.models.aws import AwsBedrock
+from cua.agno_config.bedrock_mcp_model import BedrockMCPModel
 
 
 # Model type aliases for clarity
@@ -21,15 +21,15 @@ SONNET_MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 def get_bedrock_model(
     model_type: ModelType = "haiku",
     region: str | None = None
-) -> AwsBedrock:
-    """Get configured Bedrock model instance.
+) -> BedrockMCPModel:
+    """Get configured Bedrock MCP model instance.
 
     Args:
         model_type: Model to use - "haiku" (default) or "sonnet"
         region: AWS region (default: us-east-1 or AWS_REGION env var)
 
     Returns:
-        Configured Bedrock model instance
+        Configured BedrockMCPModel instance with MCP tool support
 
     Note:
         Authentication uses environment variables in order:
@@ -48,8 +48,8 @@ def get_bedrock_model(
     if "AWS_BEARER_TOKEN_BEDROCK" in os.environ and "AWS_SESSION_TOKEN" not in os.environ:
         os.environ["AWS_SESSION_TOKEN"] = os.environ["AWS_BEARER_TOKEN_BEDROCK"]
 
-    # Create Bedrock model (Agno handles auth via boto3 automatically)
-    return AwsBedrock(
+    # Create Bedrock MCP model (includes tool result formatting)
+    return BedrockMCPModel(
         id=model_id,
         aws_region=region
     )
