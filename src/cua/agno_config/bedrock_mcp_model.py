@@ -32,15 +32,34 @@ class BedrockMCPModel(AwsBedrock):
         Returns:
             Tuple of (formatted_messages, system_message)
         """
+        log_debug(f"BedrockMCPModel._format_messages called with {len(messages)} messages")
+
         formatted_messages: List[Dict[str, Any]] = []
         system_message = None
 
-        for message in messages:
+        for idx, message in enumerate(messages):
+            log_debug(f"Processing message {idx}: role={message.role}, "
+                     f"has_content={bool(message.content)}, "
+                     f"has_tool_calls={bool(message.tool_calls)}, "
+                     f"has_images={bool(message.images)}, "
+                     f"tool_call_id={message.tool_call_id}")
             if message.role == "system":
                 system_message = [{"text": message.content}]
             elif message.role == "tool":
                 # Get tool result content
                 content = message.get_content(use_compressed_content=compress_tool_results)
+
+                log_debug(f"Tool result - tool_call_id={message.tool_call_id}, "
+                         f"content_type={type(content)}, "
+                         f"content_preview={str(content)[:200] if content else 'None'}")
+
+                # Check if message has images
+                if message.images:
+                    log_debug(f"Tool result has {len(message.images)} images")
+                    for img_idx, img in enumerate(message.images):
+                        log_debug(f"  Image {img_idx}: format={img.format}, "
+                                 f"has_content={bool(img.content)}, "
+                                 f"content_size={len(img.content) if img.content else 0}")
 
                 # Handle MCP tool results which might be plain strings
                 tool_result_content = self._format_tool_result_content(content)
@@ -54,6 +73,8 @@ class BedrockMCPModel(AwsBedrock):
                     "role": "user",
                     "content": [{"toolResult": tool_result}]
                 }
+
+                log_debug(f"Formatted tool result: {formatted_message}")
                 formatted_messages.append(formatted_message)
             else:
                 # Handle other messages normally (use parent implementation logic)
@@ -89,11 +110,20 @@ class BedrockMCPModel(AwsBedrock):
 
                 # Handle images
                 if message.images:
-                    for image in message.images:
+                    log_debug(f"Message has {len(message.images)} images")
+                    for img_idx, image in enumerate(message.images):
+                        log_debug(f"Processing image {img_idx}: format={image.format}, "
+                                 f"has_content={bool(image.content)}, "
+                                 f"content_size={len(image.content) if image.content else 0}")
+
                         if not image.content:
+                            log_warning(f"Image {img_idx} has no content!")
                             raise ValueError("Image content is required for AWS Bedrock.")
                         if not image.format:
-                            raise ValueError("Image format is required for AWS Bedrock.")
+                            log_warning(f"Image {img_idx} has no format! Attempting to infer...")
+                            # Try to infer format from content or default to png
+                            image.format = "png"
+                            log_debug(f"Set image format to: {image.format}")
 
                         formatted_message["content"].append(
                             {
@@ -124,12 +154,20 @@ class BedrockMCPModel(AwsBedrock):
         Returns:
             List of content blocks for Bedrock API
         """
+        log_debug(f"_format_tool_result_content called with type={type(content)}")
+
         # If content is already a list, check if it's properly formatted
         if isinstance(content, list):
+            log_debug(f"Content is list with {len(content)} items")
+            if content:
+                log_debug(f"First item type: {type(content[0])}, value preview: {str(content[0])[:100]}")
+
             # Check if list items are already Bedrock-formatted
             if all(isinstance(item, dict) and any(k in item for k in ["text", "json", "image"]) for item in content):
+                log_debug("Content is already Bedrock-formatted, returning as-is")
                 return content
             # Otherwise wrap list as JSON
+            log_debug("Content is list but not Bedrock-formatted, wrapping in json block")
             return [{"json": {"result": content}}]
 
         # If content is a plain string, wrap in text block
@@ -138,7 +176,7 @@ class BedrockMCPModel(AwsBedrock):
             return [{"text": content}]
 
         # If content is dict/list/other, wrap in json block
-        log_debug(f"Wrapping structured tool result in json block: {type(content)}")
+        log_debug(f"Wrapping structured tool result in json block: {type(content)}, preview: {str(content)[:200]}")
         return [{"json": {"result": content}}]
 
 
