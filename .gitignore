@@ -16,5 +16,15 @@ test_artifacts/**
 test_runs/**
 logs/**
 
+# MCP tool outputs that land in project root (should go to test_artifacts)
+page-*.md
+page_*.md
+debug-*.md
+step*.md
+current_page*.md
+snapshot*.md
+scrolled*.md
+*.png
+
 # Pytest cache
 .pytest_cache/
