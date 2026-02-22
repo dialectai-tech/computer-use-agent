@@ -6,6 +6,7 @@ state descriptions (not full data) to keep the Orchestrator context light.
 Phase 2: MCP Playwright integration (current)
 """
 
+from pathlib import Path
 from typing import Any, Optional
 from agno.agent import Agent
 from agno.models.aws import AwsBedrock
@@ -59,7 +60,9 @@ IMPORTANT: Execute actions via MCP tools and return concise summaries.
 
 def create_browser_agent(
     model: AwsBedrock,
-    playwright_controller: Optional[Any] = None
+    playwright_controller: Optional[Any] = None,
+    screenshots_dir: Optional[Path] = None,
+    snapshots_dir: Optional[Path] = None
 ) -> Agent:
     """Create Browser Agent with native MCP Playwright tools.
 
@@ -68,6 +71,8 @@ def create_browser_agent(
     Args:
         model: Bedrock model instance (Haiku or Sonnet)
         playwright_controller: PlaywrightController instance (optional, for hybrid mode)
+        screenshots_dir: Directory for saving screenshots (absolute path)
+        snapshots_dir: Directory for saving page snapshots (absolute path)
 
     Returns:
         Configured Browser Agent with native MCP tools
@@ -78,11 +83,25 @@ def create_browser_agent(
         refresh_connection=True  # Auto-reconnect if crashes
     )
 
+    # Build instructions with session-specific paths
+    instructions = BROWSER_AGENT_INSTRUCTIONS
+
+    if screenshots_dir or snapshots_dir:
+        path_instructions = "\n\n**CRITICAL - File Paths:**\n"
+        if screenshots_dir:
+            path_instructions += f"- When saving screenshots, use filename parameter with ABSOLUTE path: '{screenshots_dir}/filename.png'\n"
+        if snapshots_dir:
+            path_instructions += f"- When saving snapshots, use filename parameter with ABSOLUTE path: '{snapshots_dir}/filename.md'\n"
+        path_instructions += "- NEVER use relative paths like 'screenshot.png' - always use the full absolute path shown above\n"
+        path_instructions += "- Example: browser_screenshot(filename=\"" + str(screenshots_dir) + "/page-loaded.png\")\n"
+
+        instructions = instructions + path_instructions
+
     return Agent(
         name="Browser Agent",
         model=model,
         description="Execute browser actions via Playwright MCP",
-        instructions=BROWSER_AGENT_INSTRUCTIONS,
+        instructions=instructions,
         tools=[playwright_mcp],
         markdown=True
     )

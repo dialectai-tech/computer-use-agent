@@ -171,7 +171,10 @@ Work step-by-step to complete the task.
             team = create_cua_team(
                 orchestrator_model=self.config["orchestrator_model"],
                 agent_model=self.config["agent_model"],
-                playwright_controller=None  # Phase 2: MCP handles browser
+                playwright_controller=None,  # Phase 2: MCP handles browser
+                screenshots_dir=self.screenshots_dir,
+                snapshots_dir=self.snapshots_dir,
+                recordings_dir=self.recordings_dir
             )
 
             # Log task start

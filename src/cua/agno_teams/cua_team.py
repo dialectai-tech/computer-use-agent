@@ -4,6 +4,8 @@ This module creates a coordinated team of specialized agents that work together
 to solve browser automation tasks with minimal token overhead.
 """
 
+from pathlib import Path
+from typing import Optional
 from agno.team import Team
 from agno.models.aws import AwsBedrock
 
@@ -16,7 +18,10 @@ from cua.agno_agents.analysis_agent import create_analysis_agent
 def create_cua_team(
     orchestrator_model: AwsBedrock,
     agent_model: AwsBedrock = None,
-    playwright_controller: any = None
+    playwright_controller: any = None,
+    screenshots_dir: Optional[Path] = None,
+    snapshots_dir: Optional[Path] = None,
+    recordings_dir: Optional[Path] = None
 ) -> Team:
     """Create CUA Team with all specialized agents.
 
@@ -27,6 +32,9 @@ def create_cua_team(
         orchestrator_model: Model for Orchestrator agent (typically Haiku)
         agent_model: Model for sub-agents (defaults to orchestrator_model)
         playwright_controller: PlaywrightController instance (optional, for Phase 1)
+        screenshots_dir: Directory for saving screenshots (session-specific)
+        snapshots_dir: Directory for saving page snapshots (session-specific)
+        recordings_dir: Directory for saving video recordings (session-specific)
 
     Returns:
         Configured Agno Team with all agents
@@ -43,7 +51,12 @@ def create_cua_team(
 
     # Create all agents
     orchestrator = create_orchestrator_agent(orchestrator_model)
-    browser_agent = create_browser_agent(agent_model, playwright_controller)
+    browser_agent = create_browser_agent(
+        agent_model,
+        playwright_controller,
+        screenshots_dir=screenshots_dir,
+        snapshots_dir=snapshots_dir
+    )
     memory_agent = create_memory_agent(agent_model)
     analysis_agent = create_analysis_agent(agent_model)
 
