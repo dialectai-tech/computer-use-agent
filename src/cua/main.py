@@ -1,4 +1,4 @@
-"""CL I interface for Computer Use Automation."""
+"""CLI interface for Computer Use Automation."""
 
 import os
 import sys
@@ -8,6 +8,7 @@ from rich.console import Console
 
 from cua.coordinator.agent import CoordinatorAgent
 from cua.coordinator.agno_coordinator import AgnoCoordinator
+from cua.coordinator.solo_coordinator import SoloCoordinator
 from cua.providers.bedrock import BedrockProvider
 
 # Load environment variables
@@ -31,25 +32,31 @@ console = Console()
     "--model",
     type=click.Choice(["haiku", "sonnet"], case_sensitive=False),
     default=lambda: os.getenv("BEDROCK_MODEL", "haiku"),
-    help="Claude model to use via Bedrock: haiku (faster/cheaper) or sonnet (smarter) (default: haiku)"
+    help="Claude model via Bedrock: haiku (faster/cheaper) or sonnet (smarter) [default: haiku]"
 )
 @click.option(
     "--max-iterations",
     type=int,
     default=lambda: int(os.getenv("MAX_ITERATIONS", "30")),
-    help="Maximum number of iterations (default: 30)"
+    help="Maximum iterations (default: 30)"
+)
+@click.option(
+    "--max-tool-calls",
+    type=int,
+    default=lambda: int(os.getenv("MAX_TOOL_CALLS", "150")),
+    help="Maximum tool calls per run in efficient mode (default: 150)"
 )
 @click.option(
     "--display-width",
     type=int,
-    default=lambda: int(os.getenv("DISPLAY_WIDTH", "1024")),
-    help="Display width in pixels (default: 1024)"
+    default=lambda: int(os.getenv("DISPLAY_WIDTH", "1280")),
+    help="Display width in pixels (default: 1280)"
 )
 @click.option(
     "--display-height",
     type=int,
-    default=lambda: int(os.getenv("DISPLAY_HEIGHT", "768")),
-    help="Display height in pixels (default: 768)"
+    default=lambda: int(os.getenv("DISPLAY_HEIGHT", "720")),
+    help="Display height in pixels (default: 720)"
 )
 @click.option(
     "--zoom",
@@ -64,8 +71,8 @@ console = Console()
 )
 @click.option(
     "--record-video/--no-record-video",
-    default=True,
-    help="Record video of the browser session (default: True)"
+    default=False,
+    help="Record video of the browser session (default: False)"
 )
 @click.option(
     "--video-dir",
@@ -86,7 +93,7 @@ console = Console()
 @click.option(
     "--extended-thinking/--no-extended-thinking",
     default=False,
-    help="Enable extended thinking for complex reasoning (default: disabled)"
+    help="Enable extended thinking (default: disabled)"
 )
 @click.option(
     "--thinking-budget",
@@ -97,36 +104,47 @@ console = Console()
 @click.option(
     "--use-accessibility-tree/--no-accessibility-tree",
     default=True,
-    help="Use accessibility tree alongside screenshots for better web automation (default: enabled)"
+    help="Use accessibility tree for web automation (default: enabled)"
+)
+@click.option(
+    "--mode",
+    type=click.Choice(["efficient", "agno", "classic"], case_sensitive=False),
+    default="efficient",
+    help=(
+        "Agent mode: 'efficient' (single-agent, default), "
+        "'agno' (multi-agent team), 'classic' (legacy coordinator)"
+    )
 )
 @click.option(
     "--use-agno/--no-agno",
     default=False,
-    help="Use Agno multi-agent architecture (Phase 1: experimental) (default: disabled)"
+    hidden=True,  # Legacy flag, use --mode agno instead
+    help="[Legacy] Use Agno multi-agent architecture"
 )
 @click.option(
     "--orchestrator-model",
     type=click.Choice(["haiku", "sonnet"], case_sensitive=False),
     default=None,
-    help="Model for orchestrator agent (optional, defaults to --model)"
+    help="Model for orchestrator agent in multi-agent mode (optional, defaults to --model)"
 )
 @click.option(
     "--agent-model",
     type=click.Choice(["haiku", "sonnet"], case_sensitive=False),
     default=None,
-    help="Model for sub-agents (optional, defaults to --model)"
+    help="Model for sub-agents in multi-agent mode (optional, defaults to --model)"
 )
 @click.option(
     "--log-level",
     type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
     default="INFO",
-    help="Logging level for structured logs (default: INFO)"
+    help="Logging level (default: INFO)"
 )
 def cli(
     url: str,
     prompt: str,
     model: str,
     max_iterations: int,
+    max_tool_calls: int,
     display_width: int,
     display_height: int,
     zoom: int,
@@ -138,77 +156,101 @@ def cli(
     extended_thinking: bool,
     thinking_budget: int,
     use_accessibility_tree: bool,
+    mode: str,
     use_agno: bool,
     orchestrator_model: str,
     agent_model: str,
     log_level: str
-):
-    """Computer Use Automation - Simplified MCP Multi-Agent Architecture.
+) -> None:
+    """Computer Use Automation — AI-powered browser task automation.
 
-    This tool supports two modes:
+    Three modes available:
 
-    1. **Classic Mode** (default): CoordinatorAgent with facts tracking
-    2. **Agno Mode** (--use-agno): Multi-agent architecture with token optimization
+    \b
+    EFFICIENT (default): Single-agent with direct Playwright MCP access.
+      - ~80% fewer API calls than multi-agent
+      - Direct tool execution, no delegation overhead
+      - Built-in progress tracking and video recording
 
-    Example usage:
+    \b
+    AGNO: Multi-agent Agno Team (Orchestrator + Browser + Memory + Analysis).
+      - More structured delegation
+      - Useful for complex multi-domain tasks
+      - Higher API call overhead
 
-        # Classic mode
+    \b
+    CLASSIC: Original CoordinatorAgent with facts tracking.
+      - Legacy mode
+      - Direct Bedrock + Playwright loop
+
+    \b
+    Examples:
+        # Efficient mode (default)
         cua --url "https://example.com" --prompt "Fill out the contact form"
 
-        # Agno multi-agent mode (Phase 1: experimental)
-        cua --use-agno --url "https://example.com" --prompt "Complete task"
+        # With video recording
+        cua --url "https://example.com" --prompt "Complete challenge" --record-video
 
-        # Agno with custom models
-        cua --use-agno --orchestrator-model sonnet --agent-model haiku \
-            --url "https://example.com" --prompt "Complex task"
+        # Multi-agent mode
+        cua --mode agno --url "https://example.com" --prompt "Complex task"
+
+        # Classic mode
+        cua --mode classic --url "https://example.com" --prompt "Simple task"
     """
     # Display header
     console.print("\n[bold cyan]╔═══════════════════════════════════════╗[/bold cyan]")
     console.print("[bold cyan]║  Computer Use Automation (CUA)        ║[/bold cyan]")
     console.print("[bold cyan]╚═══════════════════════════════════════╝[/bold cyan]\n")
 
-    # Map model shorthand to Bedrock model ID
-    model_map = {
-        "haiku": "claude-3-5-haiku-20241022-v1:0",
-        "sonnet": "claude-sonnet-4-5"
-    }
-    bedrock_model = model_map.get(model.lower(), model)
-    region = os.getenv("AWS_REGION", "us-east-1")
-
-    # Check if any AWS credentials are configured
-    has_credentials = (
-        os.getenv("AWS_ACCESS_KEY_ID") or
-        os.getenv("AWS_BEARER_TOKEN_BEDROCK") or
-        os.getenv("AWS_SESSION_TOKEN")
-    )
-
-    if not has_credentials:
-        console.print("[bold yellow]Warning: No AWS credentials found in environment[/bold yellow]")
-        console.print("Bedrock will attempt to use IAM role or ~/.aws/credentials")
-        console.print("\nTo authenticate, set one of:")
-        console.print("  - AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY")
-        console.print("  - AWS_BEARER_TOKEN_BEDROCK (mapped to AWS_SESSION_TOKEN)")
-        console.print("  - Use IAM role (if running on AWS EC2/ECS)")
-        console.print()
-
-    # Initialize Bedrock provider
-    try:
-        ai_provider = BedrockProvider(model=bedrock_model, region=region)
-        console.print(f"[dim]Using AWS Bedrock with model: {model} ({bedrock_model})[/dim]")
-    except Exception as e:
-        console.print(f"[bold red]Error initializing Bedrock provider: {str(e)}[/bold red]")
-        console.print("\nPlease ensure you have valid AWS credentials configured.")
-        sys.exit(1)
+    # Handle legacy --use-agno flag
+    if use_agno:
+        mode = "agno"
 
     # Ensure URL has protocol
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
         console.print(f"[dim]Adding https:// to URL: {url}[/dim]\n")
 
-    # Initialize coordinator agent (choose mode)
-    if use_agno:
-        # Use Agno multi-agent architecture
-        console.print("[dim]Mode: Agno Multi-Agent (Phase 1: Foundation)[/dim]")
+    region = os.getenv("AWS_REGION", "us-east-1")
+
+    # Check for AWS credentials
+    has_credentials = (
+        os.getenv("AWS_ACCESS_KEY_ID") or
+        os.getenv("AWS_BEARER_TOKEN_BEDROCK") or
+        os.getenv("AWS_SESSION_TOKEN")
+    )
+    if not has_credentials:
+        console.print("[bold yellow]Warning: No AWS credentials found in environment[/bold yellow]")
+        console.print("Bedrock will attempt to use IAM role or ~/.aws/credentials\n")
+
+    # Choose agent mode
+    if mode == "efficient":
+        console.print(f"[dim]Mode: Efficient Single-Agent ({model})[/dim]")
+        agent = SoloCoordinator(
+            model=model,
+            record_video=record_video,
+            display_width=display_width,
+            display_height=display_height,
+            headless=headless,
+            max_tool_calls=max_tool_calls,
+        )
+
+    elif mode == "agno":
+        console.print("[dim]Mode: Agno Multi-Agent Team[/dim]")
+
+        # Map model shorthand to Bedrock model ID for BedrockProvider
+        model_map = {
+            "haiku": "claude-3-5-haiku-20241022-v1:0",
+            "sonnet": "claude-sonnet-4-5"
+        }
+        bedrock_model = model_map.get(model.lower(), model)
+
+        try:
+            ai_provider = BedrockProvider(model=bedrock_model, region=region)
+        except Exception as e:
+            console.print(f"[bold red]Error initializing Bedrock provider: {e}[/bold red]")
+            sys.exit(1)
+
         agent = AgnoCoordinator(
             provider=ai_provider,
             model=model,
@@ -227,9 +269,24 @@ def cli(
             thinking_budget=thinking_budget,
             use_accessibility_tree=use_accessibility_tree,
         )
-    else:
-        # Use classic coordinator
-        console.print("[dim]Mode: Classic Coordinator with Facts Tracking[/dim]")
+
+    else:  # classic
+        console.print("[dim]Mode: Classic Coordinator[/dim]")
+
+        model_map = {
+            "haiku": "claude-3-5-haiku-20241022-v1:0",
+            "sonnet": "claude-sonnet-4-5"
+        }
+        bedrock_model = model_map.get(model.lower(), model)
+
+        try:
+            ai_provider = BedrockProvider(model=bedrock_model, region=region)
+            console.print(f"[dim]Using AWS Bedrock: {model} ({bedrock_model})[/dim]")
+        except Exception as e:
+            console.print(f"[bold red]Error initializing Bedrock provider: {e}[/bold red]")
+            console.print("\nPlease ensure you have valid AWS credentials configured.")
+            sys.exit(1)
+
         agent = CoordinatorAgent(
             provider=ai_provider,
             display_width=display_width,
@@ -243,7 +300,7 @@ def cli(
             extended_thinking=extended_thinking,
             thinking_budget=thinking_budget,
             use_accessibility_tree=use_accessibility_tree,
-            track_facts=True  # Enable critical facts tracking
+            track_facts=True,
         )
 
     # Run task
@@ -253,50 +310,31 @@ def cli(
         max_iterations=max_iterations
     )
 
-    # Display results
-    console.print("\n[bold cyan]═══ Results ═══[/bold cyan]")
-    console.print(f"Status: {'[green]✓ Success[/green]' if result.success else '[red]✗ Failed[/red]'}")
-    console.print(f"Iterations: {result.iterations}")
-    console.print(f"Total time: {result.total_time:.2f}s")
+    # Display results (for modes that don't display internally)
+    if mode in ("agno", "classic"):
+        console.print("\n[bold cyan]═══ Results ═══[/bold cyan]")
+        console.print(f"Status: {'[green]✓ Success[/green]' if result.success else '[red]✗ Failed[/red]'}")
+        console.print(f"Iterations: {result.iterations}")
+        console.print(f"Total time: {result.total_time:.2f}s")
 
-    if result.final_url:
-        console.print(f"Final URL: {result.final_url}")
+        if result.final_url:
+            console.print(f"Final URL: {result.final_url}")
+        if result.error:
+            console.print(f"Error: [red]{result.error}[/red]")
 
-    if result.error:
-        console.print(f"Error: [red]{result.error}[/red]")
+        if result.stats:
+            console.print("\n[bold cyan]═══ Statistics ═══[/bold cyan]")
+            console.print(f"API Calls: {result.stats.get('api_calls', 0)}")
+            console.print(f"Input Tokens: {result.stats.get('input_tokens', 0):,}")
+            console.print(f"Output Tokens: {result.stats.get('output_tokens', 0):,}")
+            console.print(f"Total Tokens: {result.stats.get('total_tokens', 0):,}")
+            console.print(f"Screenshots: {result.stats.get('screenshots_taken', 0)}")
+            console.print(f"Actions: {result.stats.get('actions_executed', 0)}")
 
-    # Display stats if available
-    if result.stats:
-        console.print("\n[bold cyan]═══ Statistics ═══[/bold cyan]")
-        console.print(f"API Calls: {result.stats['api_calls']}")
-        console.print(f"Input Tokens: {result.stats['input_tokens']:,}")
-        console.print(f"Output Tokens: {result.stats['output_tokens']:,}")
-        console.print(f"Total Tokens: {result.stats['total_tokens']:,}")
-
-        # Display cache stats if available
-        if result.stats.get('cache_creation_tokens', 0) > 0 or result.stats.get('cache_read_tokens', 0) > 0:
-            console.print(f"Cache Creation: {result.stats.get('cache_creation_tokens', 0):,} tokens")
-            console.print(f"Cache Reads: {result.stats.get('cache_read_tokens', 0):,} tokens")
-
-            # Calculate savings
-            cache_read = result.stats.get('cache_read_tokens', 0)
-            if cache_read > 0:
-                # Cache reads are 90% cheaper (0.1x cost vs 1x)
-                # So savings = cache_read * 0.9
-                savings_pct = (cache_read / result.stats['input_tokens']) * 90 if result.stats['input_tokens'] > 0 else 0
-                console.print(f"[green]Cache Savings: ~{savings_pct:.1f}% on input tokens[/green]")
-
-        console.print(f"Screenshots: {result.stats['screenshots_taken']}")
-        console.print(f"Actions: {result.stats['actions_executed']}")
-        console.print(f"Avg API Time: {result.stats['avg_api_time']:.2f}s")
-
-    # Display video path if recorded
-    if result.video_path:
-        console.print(f"\n[green]✓ Video saved: {result.video_path}[/green]")
+        if result.video_path:
+            console.print(f"\n[green]✓ Video saved: {result.video_path}[/green]")
 
     console.print()
-
-    # Exit with appropriate code
     sys.exit(0 if result.success else 1)
 
 
