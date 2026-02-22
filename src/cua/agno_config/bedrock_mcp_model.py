@@ -25,6 +25,9 @@ class BedrockMCPModel(AwsBedrock):
         MCP tools may return simple strings instead of structured content.
         We need to ensure they're properly wrapped for Bedrock.
 
+        CRITICAL: Multiple consecutive tool results must be grouped into a
+        single message with role="user", not separate messages.
+
         Args:
             messages: List of messages to format
             compress_tool_results: Whether to compress tool results
@@ -38,6 +41,9 @@ class BedrockMCPModel(AwsBedrock):
         formatted_messages: List[Dict[str, Any]] = []
         system_message = None
 
+        # Collect consecutive tool results to group them
+        pending_tool_results: List[Dict[str, Any]] = []
+
         for idx, message in enumerate(messages):
             print(f"[BedrockMCPModel] Message {idx}: role={message.role}, "
                   f"has_content={bool(message.content)}, "
@@ -49,10 +55,19 @@ class BedrockMCPModel(AwsBedrock):
                      f"has_tool_calls={bool(message.tool_calls)}, "
                      f"has_images={bool(message.images)}, "
                      f"tool_call_id={message.tool_call_id}")
+
             if message.role == "system":
+                # Flush any pending tool results before system message
+                if pending_tool_results:
+                    formatted_messages.append({
+                        "role": "user",
+                        "content": pending_tool_results
+                    })
+                    pending_tool_results = []
                 system_message = [{"text": message.content}]
+
             elif message.role == "tool":
-                # Get tool result content
+                # Collect tool result - will be grouped with other consecutive tool results
                 content = message.get_content(use_compressed_content=compress_tool_results)
 
                 print(f"[BedrockMCPModel] Tool result - tool_call_id={message.tool_call_id}, "
@@ -77,14 +92,19 @@ class BedrockMCPModel(AwsBedrock):
                     "content": tool_result_content,
                 }
 
-                formatted_message: Dict[str, Any] = {
-                    "role": "user",
-                    "content": [{"toolResult": tool_result}]
-                }
-
-                log_debug(f"Formatted tool result: {formatted_message}")
-                formatted_messages.append(formatted_message)
+                # Add to pending tool results (will be grouped)
+                pending_tool_results.append({"toolResult": tool_result})
+                log_debug(f"Added tool result to pending group (now {len(pending_tool_results)} pending)")
             else:
+                # Flush any pending tool results before this message
+                if pending_tool_results:
+                    print(f"[BedrockMCPModel] Flushing {len(pending_tool_results)} grouped tool results")
+                    formatted_messages.append({
+                        "role": "user",
+                        "content": pending_tool_results
+                    })
+                    pending_tool_results = []
+
                 # Handle other messages normally (use parent implementation logic)
                 formatted_message = {"role": message.role, "content": []}
 
@@ -145,6 +165,14 @@ class BedrockMCPModel(AwsBedrock):
                         )
 
                 formatted_messages.append(formatted_message)
+
+        # Flush any remaining pending tool results
+        if pending_tool_results:
+            print(f"[BedrockMCPModel] Flushing final {len(pending_tool_results)} grouped tool results")
+            formatted_messages.append({
+                "role": "user",
+                "content": pending_tool_results
+            })
 
         print(f"[BedrockMCPModel] Returning {len(formatted_messages)} formatted messages")
         return formatted_messages, system_message
