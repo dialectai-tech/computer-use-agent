@@ -32,12 +32,18 @@ class BedrockMCPModel(AwsBedrock):
         Returns:
             Tuple of (formatted_messages, system_message)
         """
+        print(f"[BedrockMCPModel] _format_messages called with {len(messages)} messages")
         log_debug(f"BedrockMCPModel._format_messages called with {len(messages)} messages")
 
         formatted_messages: List[Dict[str, Any]] = []
         system_message = None
 
         for idx, message in enumerate(messages):
+            print(f"[BedrockMCPModel] Message {idx}: role={message.role}, "
+                  f"has_content={bool(message.content)}, "
+                  f"tool_calls={bool(message.tool_calls)}, "
+                  f"images={bool(message.images)}, "
+                  f"tool_call_id={message.tool_call_id}")
             log_debug(f"Processing message {idx}: role={message.role}, "
                      f"has_content={bool(message.content)}, "
                      f"has_tool_calls={bool(message.tool_calls)}, "
@@ -49,6 +55,8 @@ class BedrockMCPModel(AwsBedrock):
                 # Get tool result content
                 content = message.get_content(use_compressed_content=compress_tool_results)
 
+                print(f"[BedrockMCPModel] Tool result - tool_call_id={message.tool_call_id}, "
+                      f"content_type={type(content)}")
                 log_debug(f"Tool result - tool_call_id={message.tool_call_id}, "
                          f"content_type={type(content)}, "
                          f"content_preview={str(content)[:200] if content else 'None'}")
@@ -138,6 +146,7 @@ class BedrockMCPModel(AwsBedrock):
 
                 formatted_messages.append(formatted_message)
 
+        print(f"[BedrockMCPModel] Returning {len(formatted_messages)} formatted messages")
         return formatted_messages, system_message
 
     def _format_tool_result_content(self, content: Any) -> List[Dict[str, Any]]:
