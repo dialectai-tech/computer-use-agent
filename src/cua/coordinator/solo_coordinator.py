@@ -11,9 +11,23 @@ Architecture:
 vs Old:
     Orchestrator → Browser Agent → Memory Agent → Analysis Agent
     (7 API calls per action → 1 API call per action)
+
+Artifact layout per session:
+    test_artifacts/{session_id}/
+        REPORT.md          — Markdown action timeline
+        logs/
+            timeline.json  — Machine-readable structured log
+            session.log    — Human-readable text log
+            browser-*.log  — Playwright console logs (moved here)
+        screenshots/       — Screenshots saved by the agent
+        recordings/
+            session.webm   — Video recording (renamed from hash.webm)
+        snapshots/         — Accessibility snapshots (if saved)
 """
 
 import asyncio
+import glob
+import shutil
 import time
 from pathlib import Path
 from typing import Optional
@@ -157,7 +171,7 @@ class SoloCoordinator:
             # Determine success
             success = "TASK COMPLETE" in result_text.upper()
 
-            # Extract token metrics (real data from Bedrock)
+            # Extract token metrics (real data from Bedrock response)
             input_tokens = 0
             output_tokens = 0
             total_tokens = 0
@@ -168,6 +182,9 @@ class SoloCoordinator:
                 total_tokens = input_tokens + output_tokens
 
             elapsed = time.monotonic() - start_time
+
+            # Log all tool calls from this run to the timeline
+            screenshots_taken = self._log_tool_calls(run_output)
 
             # Log completion
             self.logger.log_task_complete(
@@ -180,13 +197,23 @@ class SoloCoordinator:
             if total_tokens > 0:
                 self.logger.log_token_usage(input_tokens, output_tokens, total_tokens)
 
-            # Write report
+            # Organize artifacts into proper directories
+            video_path = self._organize_artifacts()
+
+            # Write final report
             report_path = self.logger.write_report()
 
             # Display results
             self._display_result(
-                success, elapsed, state_tracker, total_tokens, report_path,
-                input_tokens=input_tokens, output_tokens=output_tokens,
+                success=success,
+                elapsed=elapsed,
+                state_tracker=state_tracker,
+                total_tokens=total_tokens,
+                report_path=report_path,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                screenshots_taken=screenshots_taken,
+                video_path=video_path,
             )
 
             return TaskResult(
@@ -194,14 +221,14 @@ class SoloCoordinator:
                 iterations=1,
                 total_time=elapsed,
                 final_url=None,
-                video_path=str(self.recordings_dir) if self.record_video else None,
+                video_path=str(video_path) if video_path else None,
                 error=None,
                 stats={
                     "api_calls": 1,
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
                     "total_tokens": total_tokens,
-                    "screenshots_taken": 0,
+                    "screenshots_taken": screenshots_taken,
                     "actions_executed": len(state_tracker.completed_steps),
                     "avg_api_time": elapsed,
                 },
@@ -211,6 +238,8 @@ class SoloCoordinator:
             elapsed = time.monotonic() - start_time
             self.logger.log_error("Task failed with exception", e)
             self.console.print(f"\n[red]Error: {e}[/red]")
+            import traceback
+            self.console.print(f"[dim]{traceback.format_exc()}[/dim]")
 
             return TaskResult(
                 success=False,
@@ -222,27 +251,164 @@ class SoloCoordinator:
                 stats={},
             )
 
-    def _build_prompt(self, url: str, task: str) -> str:
-        """Build the full task prompt for the agent.
+    def _log_tool_calls(self, run_output: object) -> int:
+        """Extract tool calls from run output and add to timeline.
+
+        Agno stores all tool calls in run_output.tools as ToolExecution objects.
+        We log each one to give a complete action history.
 
         Args:
-            url: Target URL
-            task: User's task description
+            run_output: The RunOutput from agent.arun()
 
         Returns:
-            Full prompt string
+            Number of screenshot tool calls found
         """
+        tools = getattr(run_output, "tools", None)
+        if not tools:
+            return 0
+
+        screenshots_taken = 0
+        for tool_exec in tools:
+            tool_name = getattr(tool_exec, "tool_name", "unknown") or "unknown"
+            tool_args = getattr(tool_exec, "tool_args", {}) or {}
+            result = getattr(tool_exec, "result", "") or ""
+
+            # Build a short readable description
+            description = self._describe_tool_call(tool_name, tool_args, result)
+
+            # Determine screenshot path if applicable
+            screenshot = None
+            if tool_name == "browser_take_screenshot":
+                filename = tool_args.get("filename")
+                if filename:
+                    screenshot = filename
+                    screenshots_taken += 1
+
+            self.logger.log_action(tool_name, description, screenshot=screenshot)
+
+        return screenshots_taken
+
+    def _describe_tool_call(self, name: str, args: dict, result: str) -> str:
+        """Build a short human-readable description of a tool call."""
+        result_preview = str(result)[:120].replace("\n", " ") if result else ""
+
+        if name == "browser_navigate":
+            return f"→ {args.get('url', '?')}"
+        if name == "browser_click":
+            return f"clicked: {args.get('element', args.get('ref', '?'))}"
+        if name == "browser_type":
+            text = args.get("text", "")
+            # Don't log sensitive text fully
+            preview = text[:30] + "..." if len(text) > 30 else text
+            return f"typed: '{preview}' into ref={args.get('ref', '?')}"
+        if name == "browser_snapshot":
+            # Result is the accessibility tree — just note it was called
+            lines = len(result.split("\n")) if result else 0
+            return f"snapshot ({lines} lines)"
+        if name == "browser_take_screenshot":
+            return f"screenshot → {args.get('filename', 'in-memory')}"
+        if name == "browser_evaluate":
+            fn = str(args.get("function", ""))[:60]
+            return f"eval: {fn}"
+        if name == "browser_run_code":
+            code = str(args.get("code", ""))[:60]
+            return f"run_code: {code}"
+        if name == "browser_wait_for":
+            return f"wait: text={args.get('text', '')} time={args.get('time', '')}s"
+        if name == "browser_mouse_wheel":
+            return f"scroll dx={args.get('deltaX', 0)} dy={args.get('deltaY', 0)}"
+        if name in ("mark_complete", "store_fact", "get_facts", "get_progress"):
+            # Our state tracker tools
+            return f"{args} → {result_preview}"
+        return f"{args} → {result_preview}"
+
+    def _organize_artifacts(self) -> Optional[Path]:
+        """Organize Playwright output files into the right directories.
+
+        Playwright MCP saves files to recordings_dir when --output-dir is set:
+        - recordings_dir/videos/hash.webm  → recordings_dir/session.webm
+        - recordings_dir/console-*.log     → logs_dir/browser-console-*.log
+        - recordings_dir/trace-*.zip       → recordings_dir/trace.zip (keep)
+
+        Returns:
+            Path to the renamed video file, or None
+        """
+        video_path = None
+
+        # Move/rename video: recordings/videos/hash.webm → recordings/session.webm
+        videos_dir = self.recordings_dir / "videos"
+        if videos_dir.exists():
+            video_files = list(videos_dir.glob("*.webm")) + list(videos_dir.glob("*.mp4"))
+            if video_files:
+                src = video_files[0]  # Take the first (usually only one)
+                dst = self.recordings_dir / f"session-{self.session_id}.webm"
+                shutil.move(str(src), str(dst))
+                video_path = dst
+                self.logger.log_info(f"Video saved: {dst.name}")
+                # Remove empty videos dir if nothing else there
+                try:
+                    videos_dir.rmdir()
+                except OSError:
+                    pass  # Not empty, leave it
+
+        # Move Playwright console logs from recordings/ to logs/
+        for pattern in ("console-*.log", "console-*.txt"):
+            for src_log in self.recordings_dir.glob(pattern):
+                dst_log = self.logs_dir / f"browser-{src_log.name}"
+                shutil.move(str(src_log), str(dst_log))
+
+        # Move trace files to recordings/ if they landed elsewhere
+        for trace in self.session_dir.glob("trace*.zip"):
+            dst = self.recordings_dir / trace.name
+            if trace != dst:
+                shutil.move(str(trace), str(dst))
+
+        # Move any stray screenshots from test_artifacts/ root to session screenshots/
+        # (agent may have saved to a relative path like "test_artifacts/step-01.png")
+        # Only move files that are newer than the session start time to avoid
+        # picking up files from a previous session.
+        artifacts_root = self.session_dir.parent  # test_artifacts/
+        session_start_ts = self.session_dir.stat().st_ctime
+        for pattern in ("step-*.png", "final-*.png", "step-*.jpg"):
+            for stray in artifacts_root.glob(pattern):
+                if stray.stat().st_mtime >= session_start_ts:
+                    dst = self.screenshots_dir / stray.name
+                    shutil.move(str(stray), str(dst))
+
+        # Count screenshots in proper dir
+        n_screenshots = len(list(self.screenshots_dir.glob("*.png")))
+        if n_screenshots > 0:
+            self.logger.log_info(f"{n_screenshots} screenshots in screenshots/")
+
+        return video_path
+
+    def _build_prompt(self, url: str, task: str) -> str:
+        """Build the full task prompt for the agent."""
+        # Use absolute paths so the agent cannot accidentally shorten them
+        ss = self.screenshots_dir.resolve()
         return f"""Navigate to: {url}
 
 Task: {task}
 
-Instructions:
-1. Start by navigating to the URL above
-2. Take a browser_snapshot() to understand the page
-3. Complete the task step by step
-4. Use store_fact() to save any codes or important values you find
-5. Use mark_complete() when you finish each major step
-6. When fully done, output: TASK COMPLETE: [summary]"""
+SCREENSHOT DIRECTORY: {ss}
+You MUST save screenshots to the EXACT path shown above. Do not shorten or modify this path.
+
+SCREENSHOT INSTRUCTIONS (required):
+- When you land on a new step/page:
+  browser_take_screenshot(filename="{ss}/step-01-start.png")
+- After completing each step:
+  browser_take_screenshot(filename="{ss}/step-01-done.png")
+- Use the actual step number: step-01, step-02, step-03 etc.
+
+TASK INSTRUCTIONS:
+1. Navigate to the URL above
+2. Take browser_snapshot() to understand the page structure
+3. Save a start screenshot to the directory above
+4. Complete the task step by step
+5. Use store_fact() to save any codes or important values you find
+6. Use mark_complete() after finishing each major step
+7. When fully done, save a final screenshot then output:
+   TASK COMPLETE: [summary of what was accomplished]"""
 
     def _display_result(
         self,
@@ -253,28 +419,21 @@ Instructions:
         report_path: Path,
         input_tokens: int = 0,
         output_tokens: int = 0,
+        screenshots_taken: int = 0,
+        video_path: Optional[Path] = None,
     ) -> None:
-        """Display task result in console.
-
-        Args:
-            success: Whether task succeeded
-            elapsed: Elapsed time in seconds
-            state_tracker: State tracker with completed steps and facts
-            total_tokens: Total tokens used
-            report_path: Path to generated report
-            input_tokens: Input token count for cost estimate
-            output_tokens: Output token count for cost estimate
-        """
+        """Display task result summary in console."""
         self.console.print()
         status = "[green]✓ COMPLETE[/green]" if success else "[yellow]⚠ INCOMPLETE[/yellow]"
-        self.console.print(f"Status:   {status}")
-        self.console.print(f"Duration: {elapsed:.1f}s")
-        self.console.print(f"Steps:    {len(state_tracker.completed_steps)} completed")
+        self.console.print(f"Status:        {status}")
+        self.console.print(f"Duration:      {elapsed:.1f}s")
+        self.console.print(f"Steps done:    {len(state_tracker.completed_steps)}")
+        self.console.print(f"Screenshots:   {screenshots_taken}")
 
         if total_tokens > 0:
             from cua.utils.timeline_logger import TimelineLogger as TL
             cost = TL._estimate_cost(input_tokens, output_tokens)
-            self.console.print(f"Tokens:   {total_tokens:,} (est. ${cost:.4f})")
+            self.console.print(f"Tokens:        {total_tokens:,} (est. ${cost:.4f})")
 
         if state_tracker.completed_steps:
             self.console.print("\n[cyan]Completed steps:[/cyan]")
@@ -286,8 +445,14 @@ Instructions:
             for k, v in state_tracker.facts.items():
                 self.console.print(f"  {k}: {v}")
 
-        self.console.print(f"\n[dim]Report: {report_path}[/dim]")
-        self.console.print(f"[dim]Logs:   {self.logs_dir}/timeline.json[/dim]")
+        self.console.print(f"\n[bold]Artifacts:[/bold] test_artifacts/{self.session_id}/")
+        self.console.print(f"  Report:      REPORT.md")
+        self.console.print(f"  Timeline:    logs/timeline.json")
+        self.console.print(f"  Session log: logs/session.log")
+        if screenshots_taken > 0:
+            self.console.print(f"  Screenshots: screenshots/ ({screenshots_taken} files)")
+        if video_path:
+            self.console.print(f"  Video:       recordings/{video_path.name}")
 
 
 __all__ = ["SoloCoordinator"]

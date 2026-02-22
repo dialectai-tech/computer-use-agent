@@ -65,24 +65,12 @@ SOLO_AGENT_INSTRUCTIONS = """You are an expert browser automation agent. Complet
 
 **Popup & Overlay Handling:**
 - BEFORE attempting any task action, identify and dismiss all visible popups/overlays
-- If a click is blocked by an overlay, use browser_run_code() to dismiss ALL overlays at once:
-  ```javascript
-  async (page) => {
-    await page.evaluate(() => {
-      // Remove overlay/modal backgrounds
-      document.querySelectorAll('[class*="modal"], [class*="overlay"], [class*="popup"], [class*="dialog"]').forEach(el => el.remove());
-      // Remove any fixed-position blocking elements
-      document.querySelectorAll('*').forEach(el => {
-        const s = window.getComputedStyle(el);
-        if ((s.position === 'fixed' || s.position === 'absolute') && parseInt(s.zIndex || '0') > 100) el.remove();
-      });
-    });
-    return 'Overlays removed';
-  }
-  ```
-- Cookie banners: click Accept/Decline button before doing anything else
-- If "Dismiss" or "Close" buttons are described as fake, use browser_run_code() to remove overlays
-- After dismissing popups, re-snapshot to see the clean page state
+- Cookie banners: click Accept/Decline before anything else
+- For popups with real close buttons: click the X or Close button
+- If a click is blocked by an overlay, use browser_evaluate() to remove it by class:
+  `() => { document.querySelector('[class*="overlay"], [role="dialog"]')?.remove(); }`
+- For cookie banners specifically: `() => { document.querySelector('[class*="cookie"], [class*="consent"]')?.remove(); }`
+- After dismissing, re-snapshot to confirm it's gone
 
 **Identifying Real vs Fake Elements:**
 - Challenge sites often have MANY fake "navigation" buttons (e.g. "Continue", "Next", "Proceed")
@@ -101,17 +89,9 @@ SOLO_AGENT_INSTRUCTIONS = """You are an expert browser automation agent. Complet
 Try in order:
 1. Re-snapshot to get fresh refs, then try browser_click() again
 2. browser_evaluate() with element ref: `(el) => el.click()`
-3. Dismiss any overlays using browser_run_code() (see Popup Handling above)
-4. Use browser_run_code() to scroll element into view first, then click:
-   ```javascript
-   async (page) => {
-     const el = await page.$('button:has-text("Reveal Code")');
-     await el.scrollIntoViewIfNeeded();
-     await el.click();
-     return 'clicked';
-   }
-   ```
-5. Try browser_mouse_wheel(0, 500) to scroll, then re-snapshot
+3. Dismiss any overlays using browser_evaluate() (see Popup Handling above)
+4. browser_mouse_wheel(0, 500) to scroll the page, then re-snapshot and try again
+5. browser_press_key("Escape") to close any blocking dialogs, then retry
 
 **Form Entry Pattern:**
 1. Find the input field ref in snapshot
@@ -229,6 +209,7 @@ def build_playwright_command(
         recordings_dir.mkdir(parents=True, exist_ok=True)
         parts.append(f"--output-dir={recordings_dir}")
         parts.append(f"--save-video={viewport_size}")
+        parts.append("--save-trace")  # Detailed trace with per-action screenshots
 
     return " ".join(parts)
 
@@ -280,20 +261,14 @@ def create_solo_agent(
     playwright_mcp = MCPTools(
         command=playwright_cmd,
         refresh_connection=False,  # Keep same browser session throughout task
-        timeout_seconds=30,  # Reasonable timeout for page loads
+        timeout_seconds=60,  # 60s timeout for slow pages and complex JS
     )
 
     # Python-based state tracker (no MCP overhead for memory)
     state_tracker = BrowserStateTracker()
 
-    # Build instructions, optionally including screenshot path hint
+    # System instructions stay as-is; screenshot paths are provided in the task prompt
     instructions = SOLO_AGENT_INSTRUCTIONS
-    if screenshots_dir:
-        instructions += (
-            f"\n\n## SCREENSHOT PATHS\n"
-            f"When saving screenshots, use this absolute path prefix: {screenshots_dir}/\n"
-            f"Example: browser_take_screenshot(filename=\"{screenshots_dir}/step-01.png\")\n"
-        )
 
     agent = Agent(
         name="Browser Automation Agent",
@@ -303,8 +278,7 @@ def create_solo_agent(
         tools=[playwright_mcp, state_tracker],
         tool_call_limit=max_tool_calls,
         markdown=False,
-        add_datetime_to_context=False,  # Don't add noise to context
-        show_tool_calls=False,  # Handled by our logger
+        add_datetime_to_context=False,
     )
 
     return agent, state_tracker
