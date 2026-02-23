@@ -141,6 +141,11 @@ class BedrockMCPModel(AwsBedrock):
         log_debug(f"Formatted {len(messages)} messages → {len(formatted_messages)} Bedrock messages")
         return formatted_messages, system_message
 
+    # Maximum characters per tool result kept in context.
+    # Bounding this prevents quadratic context growth across many tool calls.
+    # 2000 chars ≈ 500 tokens — enough for the model to understand the result.
+    MAX_TOOL_RESULT_CHARS = 2000
+
     def _format_tool_result_content(self, content: Any) -> List[Dict[str, Any]]:
         """Format tool result content for Bedrock API.
 
@@ -148,6 +153,9 @@ class BedrockMCPModel(AwsBedrock):
         - Plain strings → wrap in {"text": ...}
         - Structured objects → wrap in {"json": ...}
         - Already-formatted Bedrock content → use as-is
+
+        Results are truncated to MAX_TOOL_RESULT_CHARS to prevent the
+        conversation context from growing unboundedly across many tool calls.
 
         Args:
             content: Raw tool result content
@@ -162,9 +170,29 @@ class BedrockMCPModel(AwsBedrock):
             return [{"json": {"result": content}}]
 
         if isinstance(content, str):
+            content = self._truncate_tool_result(content)
             return [{"text": content}]
 
         return [{"json": {"result": content}}]
+
+    def _truncate_tool_result(self, text: str) -> str:
+        """Truncate a tool result string to prevent context bloat.
+
+        Long results (e.g. accessibility trees with 100+ filler sections,
+        or verbose JavaScript output) cause quadratic token growth as the
+        conversation history accumulates. Cap at MAX_TOOL_RESULT_CHARS.
+
+        Args:
+            text: Raw tool result string
+
+        Returns:
+            Possibly-truncated string with a note if truncated
+        """
+        if len(text) <= self.MAX_TOOL_RESULT_CHARS:
+            return text
+        truncated = text[: self.MAX_TOOL_RESULT_CHARS]
+        omitted = len(text) - self.MAX_TOOL_RESULT_CHARS
+        return truncated + f"\n[...{omitted} chars omitted to limit context size]"
 
 
 def get_bedrock_mcp_model(

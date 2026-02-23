@@ -42,11 +42,11 @@ SOLO_AGENT_INSTRUCTIONS = """You are an expert browser automation agent. Complet
 - browser_mouse_wheel(deltaX, deltaY): Scroll page (deltaY=500 = scroll down ~half screen)
 - browser_handle_dialog(accept, promptText): Handle browser dialogs/alerts
 
-**Advanced (use for tricky situations):**
-- browser_evaluate(function): Execute JavaScript on the page or an element
-- browser_run_code(code): Run full Playwright code — most powerful, use for complex scenarios
-  - Example: `async (page) => { await page.click('button.real-submit'); return await page.title(); }`
-  - Can handle: dismissing overlays, scrolling modals, extracting hidden text, complex interactions
+**Advanced (last resort only — adds tokens to context):**
+- browser_evaluate(function): Execute simple JavaScript on the page
+  - Use for: removing an overlay, getting a hidden element's text, simple DOM queries
+- browser_run_code(code): Run full Playwright code — ONLY when simpler tools fail
+  - Each call adds significant tokens to context; prefer browser_click/type/snapshot first
 - browser_hover(ref): Hover over element (for hover menus)
 - browser_drag(startRef, endRef): Drag and drop
 
@@ -98,6 +98,18 @@ Try in order:
 2. browser_click(ref) to focus it
 3. browser_type(ref, text) to type
 4. browser_press_key("Enter") OR find and click the Submit button
+
+**After Submitting a Form / Code:**
+- WAIT for the page to redirect automatically — use browser_wait_for(time=3)
+- Then take a browser_snapshot() to see the new page state
+- NEVER navigate directly to a guessed URL like /step2, /step3 etc.
+- If the page shows an error, re-snapshot and re-read the error message
+- If the submission seemed to work but the page didn't change, wait longer: browser_wait_for(time=5)
+
+**NEVER do these:**
+- Navigate directly to /step2, /step3 or any step URL — always follow the form flow
+- Reload the page with page.reload() after a successful submission
+- Navigate back to / and restart if you hit a 404 — instead re-snapshot the current page
 
 ## PROGRESS TRACKING
 - State what you are doing: "Step N: [action]"
