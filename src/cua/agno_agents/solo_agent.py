@@ -100,11 +100,13 @@ Try in order:
 4. browser_press_key("Enter") OR find and click the Submit button
 
 **After Submitting a Form / Code:**
-- WAIT for the page to redirect automatically — use browser_wait_for(time=3)
-- Then take a browser_snapshot() to see the new page state
+- Wait 3 seconds: browser_wait_for(time=3)
+- Then CHECK THE URL to know if you succeeded:
+  `browser_evaluate(() => window.location.href + " | title: " + document.title)`
+- If the URL changed (e.g. /step1 → /step2), you succeeded — take a screenshot and move on
+- If the URL did NOT change, try submitting again or check for error messages
 - NEVER navigate directly to a guessed URL like /step2, /step3 etc.
-- If the page shows an error, re-snapshot and re-read the error message
-- If the submission seemed to work but the page didn't change, wait longer: browser_wait_for(time=5)
+- Do NOT reload, do NOT navigate back to /, do NOT clear cookies
 
 **NEVER do these:**
 - Navigate directly to /step2, /step3 or any step URL — always follow the form flow
