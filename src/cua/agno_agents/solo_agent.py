@@ -93,11 +93,13 @@ Try in order:
 4. browser_mouse_wheel(0, 500) to scroll the page, then re-snapshot and try again
 5. browser_press_key("Escape") to close any blocking dialogs, then retry
 
-**Form Entry Pattern:**
+**Form Entry Pattern (CRITICAL — React forms):**
 1. Find the input field ref in snapshot
-2. browser_click(ref) to focus it
-3. browser_type(ref, text) to type
-4. browser_press_key("Enter") OR find and click the Submit button
+2. browser_click(ref) to focus it  ← required to set React focus state
+3. browser_type(ref, text) to type  ← fires keyboard events, updates React state
+4. The Submit button should now become enabled — click it with browser_click()
+5. Do NOT use browser_evaluate to set input.value = "..." — this bypasses React's
+   event system and the submit button will stay disabled
 
 **After Submitting a Form / Code:**
 - Wait 3 seconds: browser_wait_for(time=3)
