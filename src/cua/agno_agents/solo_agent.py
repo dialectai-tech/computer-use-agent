@@ -110,6 +110,15 @@ Try in order:
 - Navigate directly to /step2, /step3 or any step URL — always follow the form flow
 - Reload the page with page.reload() after a successful submission
 - Navigate back to / and restart if you hit a 404 — instead re-snapshot the current page
+- Save snapshots or accessibility tree text to .md files — only save real screenshots as .png
+- Call browser_run_code or browser_evaluate to write files to disk
+
+**If browser_snapshot times out or returns an error:**
+- Use browser_evaluate to get only what you need:
+  `() => document.querySelector('input, button[class*="reveal"], h1, h2').textContent`
+- Or use browser_evaluate to get all interactive element labels:
+  `() => [...document.querySelectorAll('button,input,textarea')].map(e=>e.textContent||e.placeholder||e.type).filter(Boolean).slice(0,20).join(", ")`
+- Do NOT keep retrying snapshot repeatedly — switch to JS extraction
 
 ## PROGRESS TRACKING
 - State what you are doing: "Step N: [action]"
@@ -212,6 +221,9 @@ def build_playwright_command(
     parts = ["npx @playwright/mcp"]
     parts.append(f"--viewport-size={viewport_size}")
     parts.append("--no-sandbox")  # Required in many Linux/Docker environments
+    # Use snapshot-mode=incremental so only changed elements are returned
+    # after the first full snapshot (reduces snapshot size on dynamic pages)
+    parts.append("--snapshot-mode=incremental")
 
     if headless:
         parts.append("--headless")
@@ -273,7 +285,7 @@ def create_solo_agent(
     playwright_mcp = MCPTools(
         command=playwright_cmd,
         refresh_connection=False,  # Keep same browser session throughout task
-        timeout_seconds=60,  # 60s timeout for slow pages and complex JS
+        timeout_seconds=120,  # 120s to handle pages with large accessibility trees
     )
 
     # Python-based state tracker (no MCP overhead for memory)
