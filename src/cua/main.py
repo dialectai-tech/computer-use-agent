@@ -9,6 +9,7 @@ from rich.console import Console
 from cua.coordinator.agent import CoordinatorAgent
 from cua.coordinator.agno_coordinator import AgnoCoordinator
 from cua.coordinator.solo_coordinator import SoloCoordinator
+from cua.coordinator.step_coordinator import StepCoordinator
 from cua.providers.bedrock import BedrockProvider
 
 # Load environment variables
@@ -108,12 +109,19 @@ console = Console()
 )
 @click.option(
     "--mode",
-    type=click.Choice(["efficient", "agno", "classic"], case_sensitive=False),
-    default="efficient",
+    type=click.Choice(["step", "efficient", "agno", "classic"], case_sensitive=False),
+    default="step",
     help=(
-        "Agent mode: 'efficient' (single-agent, default), "
+        "Agent mode: 'step' (per-step context reset, default), "
+        "'efficient' (single-agent legacy), "
         "'agno' (multi-agent team), 'classic' (legacy coordinator)"
     )
+)
+@click.option(
+    "--max-steps",
+    type=int,
+    default=lambda: int(os.getenv("MAX_STEPS", "40")),
+    help="Maximum steps in step mode (default: 40)"
 )
 @click.option(
     "--use-agno/--no-agno",
@@ -157,6 +165,7 @@ def cli(
     thinking_budget: int,
     use_accessibility_tree: bool,
     mode: str,
+    max_steps: int,
     use_agno: bool,
     orchestrator_model: str,
     agent_model: str,
@@ -164,38 +173,42 @@ def cli(
 ) -> None:
     """Computer Use Automation — AI-powered browser task automation.
 
-    Three modes available:
+    Four modes available:
 
     \b
-    EFFICIENT (default): Single-agent with direct Playwright MCP access.
-      - ~80% fewer API calls than multi-agent
-      - Direct tool execution, no delegation overhead
-      - Built-in progress tracking and video recording
+    STEP (default): Per-step context reset — prevents quadratic token growth.
+      - Each logical step runs in an isolated mini-conversation
+      - Browser session persists; only LLM context resets
+      - ~17x fewer tokens than single-agent for long tasks
+      - Target: complete 30-step challenges for ~$0.50-$0.65
+
+    \b
+    EFFICIENT: Single-agent with direct Playwright MCP access (legacy).
+      - All tool calls accumulate in one conversation
+      - Works well for short tasks (<20 tool calls)
 
     \b
     AGNO: Multi-agent Agno Team (Orchestrator + Browser + Memory + Analysis).
       - More structured delegation
-      - Useful for complex multi-domain tasks
       - Higher API call overhead
 
     \b
     CLASSIC: Original CoordinatorAgent with facts tracking.
-      - Legacy mode
-      - Direct Bedrock + Playwright loop
+      - Legacy mode, direct Bedrock + Playwright loop
 
     \b
     Examples:
-        # Efficient mode (default)
-        cua --url "https://example.com" --prompt "Fill out the contact form"
+        # Step mode (default) — best for long tasks
+        cua --url "https://example.com" --prompt "Complete all 30 steps"
 
         # With video recording
         cua --url "https://example.com" --prompt "Complete challenge" --record-video
 
-        # Multi-agent mode
-        cua --mode agno --url "https://example.com" --prompt "Complex task"
+        # Limit steps
+        cua --url "https://example.com" --prompt "Complete task" --max-steps 10
 
-        # Classic mode
-        cua --mode classic --url "https://example.com" --prompt "Simple task"
+        # Legacy efficient mode
+        cua --mode efficient --url "https://example.com" --prompt "Short task"
     """
     # Display header
     console.print("\n[bold cyan]╔═══════════════════════════════════════╗[/bold cyan]")
@@ -224,7 +237,18 @@ def cli(
         console.print("Bedrock will attempt to use IAM role or ~/.aws/credentials\n")
 
     # Choose agent mode
-    if mode == "efficient":
+    if mode == "step":
+        console.print(f"[dim]Mode: Step-Reset ({model}) — per-step context isolation[/dim]")
+        agent = StepCoordinator(
+            model=model,
+            record_video=record_video,
+            display_width=display_width,
+            display_height=display_height,
+            headless=headless,
+            max_tool_calls_per_step=15,
+        )
+
+    elif mode == "efficient":
         console.print(f"[dim]Mode: Efficient Single-Agent ({model})[/dim]")
         agent = SoloCoordinator(
             model=model,
@@ -307,7 +331,7 @@ def cli(
     result = agent.run_task(
         url=url,
         prompt=prompt,
-        max_iterations=max_iterations
+        max_iterations=max_steps if mode == "step" else max_iterations,
     )
 
     # Display results (for modes that don't display internally)
