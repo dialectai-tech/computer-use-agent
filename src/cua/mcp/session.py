@@ -18,7 +18,27 @@ from typing import Optional
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
-from cua.agno_agents.solo_agent import build_playwright_command
+
+def build_playwright_command(
+    recordings_dir: Optional[Path] = None,
+    record_video: bool = False,
+    viewport_size: str = "1280x720",
+    headless: bool = True,
+) -> str:
+    # Do NOT use --output-mode=file — it redirects snapshot responses to disk,
+    # breaking the agent's ability to see page content.
+    parts = ["npx @playwright/mcp"]
+    parts.append(f"--viewport-size={viewport_size}")
+    parts.append("--no-sandbox")
+    parts.append("--snapshot-mode=incremental")
+    if headless:
+        parts.append("--headless")
+    if record_video and recordings_dir:
+        recordings_dir.mkdir(parents=True, exist_ok=True)
+        parts.append(f"--output-dir={recordings_dir}")
+        parts.append(f"--save-video={viewport_size}")
+        parts.append("--save-trace")
+    return " ".join(parts)
 
 
 # Tools to expose to the model — filtered to the essential ~12

@@ -6,11 +6,16 @@ import click
 from dotenv import load_dotenv
 from rich.console import Console
 
-from cua.coordinator.agent import CoordinatorAgent
-from cua.coordinator.agno_coordinator import AgnoCoordinator
-from cua.coordinator.solo_coordinator import SoloCoordinator
-from cua.coordinator.step_coordinator import StepCoordinator
-from cua.providers.bedrock import BedrockProvider
+from cua.coordinator.step_coordinator import StepCoordinator  # default mode — always imported
+
+# Legacy modes use agno which has a version conflict with newer mcp SDK.
+# Import lazily inside the mode branch so the CLI still starts for --mode step.
+def _get_legacy_coordinators():
+    from cua.coordinator.agent import CoordinatorAgent
+    from cua.coordinator.agno_coordinator import AgnoCoordinator
+    from cua.coordinator.solo_coordinator import SoloCoordinator
+    from cua.providers.bedrock import BedrockProvider
+    return CoordinatorAgent, AgnoCoordinator, SoloCoordinator, BedrockProvider
 
 # Load environment variables
 load_dotenv()
@@ -250,6 +255,7 @@ def cli(
 
     elif mode == "efficient":
         console.print(f"[dim]Mode: Efficient Single-Agent ({model})[/dim]")
+        CoordinatorAgent, AgnoCoordinator, SoloCoordinator, BedrockProvider = _get_legacy_coordinators()
         agent = SoloCoordinator(
             model=model,
             record_video=record_video,
@@ -261,6 +267,7 @@ def cli(
 
     elif mode == "agno":
         console.print("[dim]Mode: Agno Multi-Agent Team[/dim]")
+        CoordinatorAgent, AgnoCoordinator, SoloCoordinator, BedrockProvider = _get_legacy_coordinators()
 
         # Map model shorthand to Bedrock model ID for BedrockProvider
         model_map = {
@@ -296,6 +303,7 @@ def cli(
 
     else:  # classic
         console.print("[dim]Mode: Classic Coordinator[/dim]")
+        CoordinatorAgent, AgnoCoordinator, SoloCoordinator, BedrockProvider = _get_legacy_coordinators()
 
         model_map = {
             "haiku": "claude-3-5-haiku-20241022-v1:0",
